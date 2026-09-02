@@ -4,7 +4,7 @@ const nextConfig = {
   // puppeteer-core / @sparticuz/chromium ship native binaries that Next.js's
   // server bundler should not try to process - keep them external.
   webpack: (config) => {
-    config.externals = [...(config.externals || []), "puppeteer-core", "@sparticuz/chromium"];
+    config.externals = [...(config.externals || []), "puppeteer"];
     return config;
   },
 };
