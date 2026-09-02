@@ -1,0 +1,115 @@
+// Prisma schema for the attendance-reporting system.
+// Uses PostgreSQL (designed for Supabase, but works with any Postgres host).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  admin
+  coordinator
+}
+
+enum TravelStatus {
+  eligible
+  not_eligible
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  fullName     String
+  role         Role
+  createdAt    DateTime @default(now())
+
+  attendanceEntries AttendanceEntry[]
+  submissions       Submission[]
+  travelEntries     TravelEligibility[]
+}
+
+model Employee {
+  id             String   @id @default(cuid())
+  employeeNumber String   @unique
+  firstName      String
+  lastName       String
+  createdAt      DateTime @default(now())
+
+  attendanceEntries AttendanceEntry[]
+  submissions       Submission[]
+  travelEntries     TravelEligibility[]
+}
+
+model Department {
+  id               String   @id @default(cuid())
+  name             String   @unique
+  departmentNumber String
+  rate             String
+  createdAt        DateTime @default(now())
+
+  attendanceEntries AttendanceEntry[]
+  submissions       Submission[]
+}
+
+// Single-row table holding the currently open reporting month (e.g. "2026-09").
+model Setting {
+  id           Int      @id @default(1)
+  currentMonth String?
+  updatedAt    DateTime @updatedAt
+}
+
+model AttendanceEntry {
+  id           String    @id @default(cuid())
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId   String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  departmentId String
+  date         String // "YYYY-MM-DD"
+  timeIn       String // "HH:MM"
+  timeOut      String // "HH:MM"
+  isCorrection Boolean  @default(false)
+  paid         Boolean  @default(false) // relevant only when isCorrection = true
+  paidInMonth  String?
+  createdBy    User?    @relation(fields: [createdById], references: [id])
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  @@index([employeeId, departmentId, date])
+}
+
+// Tracks whether a coordinator has "submitted" (locked) the current month's
+// report for a given employee + department. Re-opening just flips this back.
+model Submission {
+  id           String   @id @default(cuid())
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId   String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  departmentId String
+  month        String
+  submitted    Boolean  @default(true)
+  submittedBy  User?    @relation(fields: [submittedById], references: [id])
+  submittedById String?
+  updatedAt    DateTime @updatedAt
+
+  @@unique([employeeId, departmentId, month])
+}
+
+// Once-per-employee-per-month travel eligibility flag.
+model TravelEligibility {
+  id         String       @id @default(cuid())
+  employee   Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId String
+  month      String
+  status     TravelStatus
+  setBy      User?        @relation(fields: [setById], references: [id])
+  setById    String?
+  updatedAt  DateTime     @updatedAt
+
+  @@unique([employeeId, month])
+}
