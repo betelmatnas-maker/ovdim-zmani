@@ -21,3 +21,5 @@ module.exports = async function handler(req, res) {
   res.setHeader("Set-Cookie", createSessionCookie(user));
   res.status(200).json({ role: user.role, fullName: user.fullName, username: user.username });
 };
+
+module.exports.default = module.exports;

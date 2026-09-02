@@ -10,4 +10,5 @@ module.exports = async function handler(req, res) {
     user: { role: session.role, fullName: session.fullName, username: session.username },
   });
 };
- module.exports.default = module.exports;
+
+module.exports.default = module.exports;
