@@ -9,10 +9,6 @@ async function handler(req, res) {
     res.status(405).end();
     return;
   }
-  if (req.session.role !== "admin") {
-    res.status(403).json({ error: "רק חשבת השכר יכולה להוריד דוחות." });
-    return;
-  }
 
   const { id } = req.query;
   const [emp, entries, departments, setting] = await Promise.all([
