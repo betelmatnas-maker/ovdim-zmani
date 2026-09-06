@@ -38,7 +38,7 @@ export default function CoordinatorPage() {
   const startOver = () => { setSubmittedFor(null); setEmpId(""); setDepId(""); setQuery(""); };
   const finish = () => { startOver(); setSessionEnded(true); };
 
-  if (loading || !user) return <Shell user={user}><p className="hint-text">טוען…</p></Shell>;
+  if (loading || !user) return <Shell user={user}><p className="hint-text">טוען… (אם זו הכניסה הראשונה אחרי זמן מה, זה עשוי לקחת עד כדקה - השרת מתעורר)</p></Shell>;
 
   if (sessionEnded) {
     return (
@@ -158,6 +158,32 @@ function ReportSheet({ empId, depId, currentMonth, onOpenCorrection, onSubmitted
   const [timeIn, setTimeIn] = useState("");
   const [timeOut, setTimeOut] = useState("");
   const [err, setErr] = useState("");
+  const [pdfBusy, setPdfBusy] = useState(false);
+
+  const downloadPdf = async () => {
+    setPdfBusy(true);
+    try {
+      const res = await fetch(`/api/reports/pdf/employee/${empId}`, { credentials: "include" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "שגיאה בהורדת הקובץ. נסו שוב בעוד כמה שניות.");
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename\*=UTF-8''(.+)$/);
+      const filename = match ? decodeURIComponent(match[1]) : "דוח-נוכחות.pdf";
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (e) {
+      alert("שגיאת רשת בהורדת הקובץ. נסו שוב.");
+    } finally {
+      setPdfBusy(false);
+    }
+  };
 
   const reload = useCallback(async () => {
     const [all, sub] = await Promise.all([
@@ -237,6 +263,9 @@ function ReportSheet({ empId, depId, currentMonth, onOpenCorrection, onSubmitted
           <button className="btn btn-secondary" onClick={reopen}>המשך לדווח</button>
         )}
         <button className="btn btn-ghost" onClick={onOpenCorrection}>דיווח הפרשים</button>
+        <button className="btn btn-ghost" onClick={downloadPdf} disabled={pdfBusy}>
+          {pdfBusy ? "מכין קובץ…" : "הורדת PDF"}
+        </button>
       </div>
     </div>
   );
