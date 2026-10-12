@@ -33,6 +33,7 @@ export default function CoordinatorPage() {
   }, [router]);
 
   const emp = employees.find((e) => e.id === empId);
+  const empDepartments = emp ? departments.filter((d) => (emp.departmentIds || []).includes(d.id)) : [];
   const filtered = employees.filter((e) => !query || fullName(e).includes(query) || e.employeeNumber.includes(query));
 
   const startOver = () => { setSubmittedFor(null); setEmpId(""); setDepId(""); setQuery(""); };
@@ -83,9 +84,9 @@ export default function CoordinatorPage() {
       {emp && (
         <div className="ledger-card">
           <h2 className="card-title">3. בחירת מחלקה</h2>
-          {departments.length === 0 ? <p className="empty-note">חשבת השכר טרם הזינה מחלקות.</p> : (
+          {empDepartments.length === 0 ? <p className="empty-note">לעובד זה לא משויכת מחלקה שמותרת לך.</p> : (
             <div className="chip-row">
-              {departments.map((d) => (
+ {empDepartments.map((d) => (
                 <button key={d.id} className={"chip " + (depId === d.id ? "is-active" : "")} onClick={() => setDepId(d.id)}>{d.name}</button>
               ))}
             </div>
