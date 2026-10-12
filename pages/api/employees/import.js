@@ -5,6 +5,15 @@ const { requireAuth } = require("../../../lib/auth");
 // Creates missing employees (matched by employee number), creates missing
 // departments automatically, and links each employee to the stated department.
 async function handler(req, res) {
+  try {
+    await run(req, res);
+  } catch (e) {
+    console.error("import failed", e);
+    res.status(500).json({ error: "שגיאת שרת בייבוא: " + String((e && e.message) || e).slice(0, 300) });
+  }
+}
+
+async function run(req, res) {
   if (req.method !== "POST") { res.status(405).end(); return; }
   if (req.session.role !== "admin") {
     res.status(403).json({ error: "רק חשבת השכר יכולה לייבא עובדים." });
