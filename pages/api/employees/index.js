@@ -3,8 +3,19 @@ const { requireAuth } = require("../../../lib/auth");
 
 async function handler(req, res) {
   if (req.method === "GET") {
-    const employees = await prisma.employee.findMany({ orderBy: { firstName: "asc" } });
-    res.status(200).json(employees);
+    const where = req.session.role === "admin" ? {}
+      : { departments: { some: { department: { coordinators: { some: { userId: req.session.sub } } } } } };
+    const employees = await prisma.employee.findMany({
+      where,
+      orderBy: { firstName: "asc" },
+      include: { departments: { select: { departmentId: true } } },
+    });
+    res.status(200).json(
+      employees.map((e) => ({
+        id: e.id, employeeNumber: e.employeeNumber, firstName: e.firstName, lastName: e.lastName,
+        departmentIds: e.departments.map((d) => d.departmentId),
+      }))
+    );
     return;
   }
 
