@@ -4,6 +4,20 @@ const { requireAuth } = require("../../../lib/auth");
 async function handler(req, res) {
   const { id } = req.query;
 
+  if (req.method === "PATCH") {
+    if (req.session.role !== "admin") {
+      res.status(403).json({ error: "רק חשבת השכר יכולה לעדכן מחלקות." });
+      return;
+    }
+    const { departmentNumber, rate } = req.body || {};
+    const dep = await prisma.department.update({
+      where: { id },
+      data: { departmentNumber: String(departmentNumber ?? "").trim(), rate: String(rate ?? "").trim() },
+    });
+    res.status(200).json(dep);
+    return;
+  }
+
   if (req.method === "DELETE") {
     if (req.session.role !== "admin") {
       res.status(403).json({ error: "רק חשבת השכר יכולה להסיר מחלקות." });

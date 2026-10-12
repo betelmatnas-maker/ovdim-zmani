@@ -3,7 +3,9 @@ const { requireAuth } = require("../../../lib/auth");
 
 async function handler(req, res) {
   if (req.method === "GET") {
-    const departments = await prisma.department.findMany({ orderBy: { name: "asc" } });
+    const where = req.session.role === "admin" ? {}
+      : { coordinators: { some: { userId: req.session.sub } } };
+    const departments = await prisma.department.findMany({ where, orderBy: { name: "asc" } });
     res.status(200).json(departments);
     return;
   }
