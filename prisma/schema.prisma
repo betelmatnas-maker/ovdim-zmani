@@ -32,6 +32,7 @@ model User {
   attendanceEntries AttendanceEntry[]
   submissions       Submission[]
   travelEntries     TravelEligibility[]
+  departments       CoordinatorDepartment[]
 }
 
 model Employee {
@@ -44,6 +45,7 @@ model Employee {
   attendanceEntries AttendanceEntry[]
   submissions       Submission[]
   travelEntries     TravelEligibility[]
+  departments       EmployeeDepartment[]
 }
 
 model Department {
@@ -55,6 +57,28 @@ model Department {
 
   attendanceEntries AttendanceEntry[]
   submissions       Submission[]
+  employees         EmployeeDepartment[]
+  coordinators      CoordinatorDepartment[]
+}
+
+// Which departments a coordinator is allowed to see and report on.
+model CoordinatorDepartment {
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  departmentId String
+
+  @@id([userId, departmentId])
+}
+
+// Which departments an employee belongs to (filled by the Excel import).
+model EmployeeDepartment {
+  employee     Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId   String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  departmentId String
+
+  @@id([employeeId, departmentId])
 }
 
 // Single-row table holding the currently open reporting month (e.g. "2026-09").
