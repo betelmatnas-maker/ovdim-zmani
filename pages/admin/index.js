@@ -43,7 +43,7 @@ export default function AdminPage() {
     }
   }, [tab, user]);
 
-  if (loading || !user) return <Shell user={user}><p className="hint-text">טוען…</p></Shell>;
+  if (loading || !user) return <Shell user={user}><p className="hint-text">טוען… (אם זו הכניסה הראשונה אחרי זמן מה, זה עשוי לקחת עד כדקה - השרת מתעורר)</p></Shell>;
 
   const tabs = [
     ["employees", "עובדים"],
@@ -64,11 +64,12 @@ export default function AdminPage() {
         ))}
       </div>
 
-      {tab === "employees" && <EmployeesTab employees={employees} reload={reload} />}
+      {tab === "employees" && <EmployeesTab employees={employees} departments={departments} reload={reload} />}
       {tab === "departments" && <DepartmentsTab departments={departments} reload={reload} />}
       {tab === "coordinators" && (
         <CoordinatorsTab
           coordinators={coordinators}
+          departments={departments}
           reload={() => api("/api/users").then(setCoordinators)}
         />
       )}
@@ -80,7 +81,7 @@ export default function AdminPage() {
   );
 }
 
-function EmployeesTab({ employees, reload }) {
+function EmployeesTab({ employees, departments, reload }) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [number, setNumber] = useState("");
@@ -100,8 +101,74 @@ function EmployeesTab({ employees, reload }) {
     await reload();
   };
 
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState(null);
+
+  const downloadTemplate = async () => {
+    const XLSX = await import("xlsx");
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["שם פרטי", "שם משפחה", "מספר עובד", "מחלקה"],
+      ["דנה", "כהן", "1001", "גן ילדים"],
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "עובדים");
+    XLSX.writeFile(wb, "תבנית-ייבוא-עובדים.xlsx");
+  };
+
+  const onFile = async (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (!file) return;
+    setImporting(true); setImportMsg(null);
+    try {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const table = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" });
+      const rows = table.slice(1)
+        .filter((r) => r.some((c) => String(c).trim() !== ""))
+        .map((r) => ({ firstName: r[0], lastName: r[1], employeeNumber: r[2], department: r[3] }));
+      if (rows.length === 0) throw new Error("לא נמצאו שורות בקובץ. ודאי שהשורה הראשונה היא כותרות.");
+      const result = await api("/api/employees/import", { method: "POST", body: { rows } });
+      setImportMsg({ ok: true, result });
+      await reload();
+    } catch (e) {
+      setImportMsg({ ok: false, text: e.message });
+    } finally { setImporting(false); }
+  };
+
+  const depNames = (e) => (e.departmentIds || [])
+    .map((id) => (departments.find((d) => d.id === id) || {}).name).filter(Boolean).join(", ");
+
   return (
     <div className="panel">
+      <div className="ledger-card">
+        <h2 className="card-title">ייבוא עובדים מקובץ אקסל</h2>
+        <p className="empty-note">
+          העמודות בקובץ, לפי הסדר: שם פרטי | שם משפחה | מספר עובד | מחלקה (השורה הראשונה היא כותרות).
+          מחלקה שעוד לא קיימת תיווצר אוטומטית. את מספר המחלקה והתעריף אפשר להשלים אחר כך בלשונית "מחלקות".
+        </p>
+        <div className="form-row">
+          <label className="btn btn-primary" style={{ cursor: "pointer" }}>
+            {importing ? "מייבא..." : "בחירת קובץ אקסל"}
+            <input type="file" accept=".xlsx,.xls,.csv" onChange={onFile} disabled={importing} style={{ display: "none" }} />
+          </label>
+          <button className="btn btn-ghost" onClick={downloadTemplate}>הורדת תבנית לדוגמה</button>
+        </div>
+        {importMsg && importMsg.ok && (
+          <div className="form-ok">
+            הייבוא הסתיים: נוספו {importMsg.result.createdEmployees} עובדים, עודכנו {importMsg.result.updatedEmployees},
+            נוצרו {importMsg.result.createdDepartments} מחלקות חדשות, שויכו {importMsg.result.links} שיוכים.
+            {importMsg.result.errors.length > 0 && (
+              <div className="form-err">
+                {importMsg.result.errors.slice(0, 20).map((m, i) => <div key={i}>{m}</div>)}
+                {importMsg.result.errors.length > 20 && <div>ועוד {importMsg.result.errors.length - 20} שגיאות...</div>}
+              </div>
+            )}
+          </div>
+        )}
+        {importMsg && !importMsg.ok && <div className="form-err">{importMsg.text}</div>}
+      </div>
       <div className="ledger-card">
         <h2 className="card-title">הוספת עובד חדש</h2>
         <div className="form-row">
@@ -116,11 +183,11 @@ function EmployeesTab({ employees, reload }) {
         <h2 className="card-title">רשימת עובדים ({employees.length})</h2>
         {employees.length === 0 ? <p className="empty-note">עדיין לא הוזנו עובדים.</p> : (
           <table className="ledger-table">
-            <thead><tr><th>שם פרטי</th><th>שם משפחה</th><th>מספר עובד</th><th></th></tr></thead>
+            <thead><tr><th>שם פרטי</th><th>שם משפחה</th><th>מספר עובד</th><th>מחלקות</th><th></th></tr></thead>
             <tbody>
               {employees.map((e) => (
                 <tr key={e.id}>
-                  <td>{e.firstName}</td><td>{e.lastName}</td><td className="mono">{e.employeeNumber}</td>
+                  <td>{e.firstName}</td><td>{e.lastName}</td><td className="mono">{e.employeeNumber}</td><td>{depNames(e)}</td>
                   <td className="cell-end"><button className="btn btn-ghost btn-sm" onClick={() => remove(e.id)}>הסרה</button></td>
                 </tr>
               ))}
@@ -152,6 +219,18 @@ function DepartmentsTab({ departments, reload }) {
     await reload();
   };
 
+  const [editId, setEditId] = useState(null);
+  const [editNum, setEditNum] = useState("");
+  const [editRate, setEditRate] = useState("");
+  const startEdit = (d) => { setEditId(d.id); setEditNum(d.departmentNumber); setEditRate(d.rate); };
+  const saveEdit = async () => {
+    try {
+      await api(`/api/departments/${editId}`, { method: "PATCH", body: { departmentNumber: editNum, rate: editRate } });
+      setEditId(null);
+      await reload();
+    } catch (e) { setErr(e.message); }
+  };
+
   return (
     <div className="panel">
       <div className="ledger-card">
@@ -172,8 +251,25 @@ function DepartmentsTab({ departments, reload }) {
             <tbody>
               {departments.map((d) => (
                 <tr key={d.id}>
-                  <td>{d.name}</td><td className="mono">{d.departmentNumber}</td><td className="mono">{d.rate}</td>
-                  <td className="cell-end"><button className="btn btn-ghost btn-sm" onClick={() => remove(d.id)}>הסרה</button></td>
+                  <td>{d.name}</td>
+                  {editId === d.id ? (
+                    <>
+                      <td><input value={editNum} onChange={(e) => setEditNum(e.target.value)} /></td>
+                      <td><input value={editRate} onChange={(e) => setEditRate(e.target.value)} /></td>
+                      <td className="cell-end">
+                        <button className="btn btn-primary btn-sm" onClick={saveEdit}>שמירה</button>{" "}
+                        <button className="btn btn-ghost btn-sm" onClick={() => setEditId(null)}>ביטול</button>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="mono">{d.departmentNumber}</td><td className="mono">{d.rate}</td>
+                      <td className="cell-end">
+                        <button className="btn btn-ghost btn-sm" onClick={() => startEdit(d)}>עריכה</button>{" "}
+                        <button className="btn btn-ghost btn-sm" onClick={() => remove(d.id)}>הסרה</button>
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -184,7 +280,7 @@ function DepartmentsTab({ departments, reload }) {
   );
 }
 
-function CoordinatorsTab({ coordinators, reload }) {
+function CoordinatorsTab({ coordinators, departments, reload }) {
   const [fullNameVal, setFullNameVal] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -204,6 +300,23 @@ function CoordinatorsTab({ coordinators, reload }) {
     await reload();
   };
 
+  const [permId, setPermId] = useState(null);
+  const [permIds, setPermIds] = useState([]);
+  const openPerm = (c) => { setPermId(c.id); setPermIds(c.departmentIds || []); };
+  const togglePerm = (id) => setPermIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  const savePerm = async () => {
+    setErr("");
+    try {
+      await api(`/api/users/${permId}`, { method: "PATCH", body: { departmentIds: permIds } });
+      setPermId(null);
+      await reload();
+    } catch (e) { setErr(e.message); }
+  };
+  const depLabel = (c) => {
+    const names = (c.departmentIds || []).map((id) => (departments.find((d) => d.id === id) || {}).name).filter(Boolean);
+    return names.length ? names.join(", ") : "ללא מחלקות - לא רואה כלום";
+  };
+
   return (
     <div className="panel">
       <div className="ledger-card">
@@ -221,16 +334,38 @@ function CoordinatorsTab({ coordinators, reload }) {
         <h2 className="card-title">רשימת רכזים ({coordinators.length})</h2>
         {coordinators.length === 0 ? <p className="empty-note">עדיין לא הוזנו רכזים.</p> : (
           <table className="ledger-table">
-            <thead><tr><th>שם מלא</th><th>שם משתמש</th><th></th></tr></thead>
+            <thead><tr><th>שם מלא</th><th>שם משתמש</th><th>מחלקות מורשות</th><th></th></tr></thead>
             <tbody>
               {coordinators.map((c) => (
                 <tr key={c.id}>
-                  <td>{c.fullName}</td><td className="mono">{c.username}</td>
-                  <td className="cell-end"><button className="btn btn-ghost btn-sm" onClick={() => remove(c.id)}>הסרה</button></td>
+                  <td>{c.fullName}</td><td className="mono">{c.username}</td><td>{depLabel(c)}</td>
+                  <td className="cell-end">
+                    <button className="btn btn-ghost btn-sm" onClick={() => openPerm(c)}>הרשאות מחלקות</button>{" "}
+                    <button className="btn btn-ghost btn-sm" onClick={() => remove(c.id)}>הסרה</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        )}
+        {permId && (
+          <div className="ledger-card">
+            <h3 className="card-title">באילו מחלקות הרכז רשאי לדווח?</h3>
+            {departments.length === 0 ? <p className="empty-note">אין עדיין מחלקות.</p> : (
+              <div className="chip-row">
+                {departments.map((d) => (
+                  <label key={d.id} style={{ display: "inline-flex", gap: 6, alignItems: "center", marginInlineEnd: 16 }}>
+                    <input type="checkbox" checked={permIds.includes(d.id)} onChange={() => togglePerm(d.id)} />
+                    {d.name}
+                  </label>
+                ))}
+              </div>
+            )}
+            <div className="form-row">
+              <button className="btn btn-primary" onClick={savePerm}>שמירה</button>
+              <button className="btn btn-ghost" onClick={() => setPermId(null)}>ביטול</button>
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -289,10 +424,19 @@ function ReportsTab({ employees, departments, currentMonth }) {
   const download = async (url, fallbackName) => {
     setBusy(url);
     try {
-      const res = await fetch(url, { credentials: "include" });
+      let res;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          res = await fetch(url, { credentials: "include" });
+          break;
+        } catch (networkErr) {
+          if (attempt === 3) throw networkErr;
+          await new Promise((r) => setTimeout(r, attempt * 1500));
+        }
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error || "שגיאה בהורדת הקובץ.");
+        alert(data.error || "שגיאה בהורדת הקובץ. אם זו הפעולה הראשונה אחרי זמן מה, ייתכן שהשרת עדיין מתעורר - נסו שוב בעוד כמה שניות.");
         return;
       }
       const blob = await res.blob();
@@ -304,6 +448,8 @@ function ReportsTab({ employees, departments, currentMonth }) {
       link.download = filename;
       link.click();
       URL.revokeObjectURL(link.href);
+    } catch (e) {
+      alert("שגיאת רשת בהורדת הקובץ. נסו שוב בעוד כמה שניות.");
     } finally {
       setBusy(null);
     }
@@ -370,7 +516,7 @@ function ReportsTab({ employees, departments, currentMonth }) {
         <h2 className="card-title">דוחות עובד בודד (PDF)</h2>
         {employees.length === 0 ? <p className="empty-note">אין עובדים במערכת.</p> : (
           <table className="ledger-table">
-            <thead><tr><th>שם</th><th>מספר עובד</th><th></th></tr></thead>
+            <thead><tr><th>שם</th><th>מספר עובד</th><th>מחלקות</th><th></th></tr></thead>
             <tbody>
               {employees.map((e) => {
                 const url = `/api/reports/pdf/employee/${e.id}`;
