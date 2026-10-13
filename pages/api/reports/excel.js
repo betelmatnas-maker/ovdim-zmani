@@ -24,10 +24,10 @@ async function handler(req, res) {
       "שם פרטי": r.firstName,
       "שם משפחה": r.lastName,
       "מספר עובד": r.employeeNumber,
-      "מחלקה": r.department,
+      "שם המחלקה": r.department,
       "מספר מחלקה": r.departmentNumber,
+      "תעריף לשעה": r.rate,
       "שעות עבודה חודשיות": fmtHours(r.monthly),
-      "תעריף": r.rate,
       "ימי עבודה חודשיים": r.days,
       "זכאות לנסיעות": travelLabel(r.travel),
     }));
@@ -38,24 +38,24 @@ async function handler(req, res) {
       "שם פרטי": r.firstName,
       "שם משפחה": r.lastName,
       "מספר עובד": r.employeeNumber,
-      "מחלקה": r.department,
+      "שם המחלקה": r.department,
       "מספר מחלקה": r.departmentNumber,
+      "תעריף לשעה": r.rate,
       "הפרשים ממתינים לתשלום (שעות)": fmtHours(r.corrections),
-      "תעריף": r.rate,
     }));
 
   const wb = XLSX.utils.book_new();
 
   const wsAttendance = XLSX.utils.json_to_sheet(attendanceRows);
   wsAttendance["!cols"] = [
-    { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 18 }, { wch: 12 }, { wch: 18 }, { wch: 16 },
+    { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 16 },
   ];
   XLSX.utils.book_append_sheet(
     wb, wsAttendance, `נוכחות ${currentMonth ? monthLabel(currentMonth) : ""}`.slice(0, 31)
   );
 
   const wsCorrections = XLSX.utils.json_to_sheet(correctionRows);
-  wsCorrections["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 26 }, { wch: 12 }];
+  wsCorrections["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 26 }];
   XLSX.utils.book_append_sheet(wb, wsCorrections, "הפרשים");
 
   const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
