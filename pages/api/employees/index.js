@@ -7,11 +7,9 @@ async function handler(req, res) {
     if (req.session.role !== "admin") {
       const mine = await prisma.coordinatorDepartment.findMany({ where: { userId: req.session.sub } });
       const myIds = mine.map((m) => m.departmentId);
-      // A coordinator sees only employees the admin assigned to one of the coordinator's
-      // departments. Unassigned employees are invisible to coordinators.
-      where = myIds.length === 0
-        ? { id: "__none__" }
-        : { departments: { some: { departmentId: { in: myIds } } } };
+      // A coordinator sees all employees, but only if the admin gave him at least one
+      // department. A coordinator with no departments sees nothing.
+      where = myIds.length === 0 ? { id: "__none__" } : {};
     }
     const employees = await prisma.employee.findMany({
       where,
