@@ -17,12 +17,16 @@ async function handler(req, res) {
   const setting = await prisma.setting.findUnique({ where: { id: 1 } });
   const currentMonth = setting ? setting.currentMonth : null;
   const rows = await computeReportRows(currentMonth);
+  rows.sort((a, b) =>
+    String(a.lastName).localeCompare(String(b.lastName), "he") ||
+    String(a.firstName).localeCompare(String(b.firstName), "he") ||
+    String(a.department).localeCompare(String(b.department), "he"));
 
   const attendanceRows = rows
     .filter((r) => r.monthly > 0)
     .map((r) => ({
-      "שם פרטי": r.firstName,
       "שם משפחה": r.lastName,
+      "שם פרטי": r.firstName,
       "מספר עובד": r.employeeNumber,
       "שם המחלקה": r.department,
       "מספר מחלקה": r.departmentNumber,
@@ -35,8 +39,8 @@ async function handler(req, res) {
   const correctionRows = rows
     .filter((r) => r.corrections > 0)
     .map((r) => ({
-      "שם פרטי": r.firstName,
       "שם משפחה": r.lastName,
+      "שם פרטי": r.firstName,
       "מספר עובד": r.employeeNumber,
       "שם המחלקה": r.department,
       "מספר מחלקה": r.departmentNumber,
