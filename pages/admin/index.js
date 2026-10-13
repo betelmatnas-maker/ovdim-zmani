@@ -137,39 +137,6 @@ function EmployeesTab({ employees, departments, reload }) {
     } finally { setImporting(false); }
   };
 
-  const [selected, setSelected] = useState([]);
-  const [filterText, setFilterText] = useState("");
-  const [onlyUnassigned, setOnlyUnassigned] = useState(false);
-  const [assignDep, setAssignDep] = useState("");
-  const [assignMsg, setAssignMsg] = useState("");
-
-  const visible = employees.filter((e) => {
-    if (onlyUnassigned && (e.departmentIds || []).length > 0) return false;
-    const q = filterText.trim();
-    if (!q) return true;
-    return (e.firstName + " " + e.lastName).includes(q) || e.employeeNumber.includes(q);
-  });
-  const allVisibleSelected = visible.length > 0 && visible.every((e) => selected.includes(e.id));
-  const toggleOne = (id) => setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
-  const toggleAll = () => setSelected(allVisibleSelected
-    ? selected.filter((id) => !visible.some((e) => e.id === id))
-    : Array.from(new Set([...selected, ...visible.map((e) => e.id)])));
-
-  const doAssign = async (action) => {
-    setAssignMsg("");
-    try {
-      const r = await api("/api/employees/assign", {
-        method: "POST", body: { employeeIds: selected, departmentId: assignDep, action },
-      });
-      setAssignMsg(action === "remove" ? `הוסר שיוך ל-${r.changed} עובדים.` : `שויכו ${r.changed} עובדים.`);
-      setSelected([]);
-      await reload();
-    } catch (e) { setAssignMsg(e.message); }
-  };
-
-  const depNames = (e) => (e.departmentIds || [])
-    .map((id) => (departments.find((d) => d.id === id) || {}).name).filter(Boolean).join(", ");
-
   return (
     <div className="panel">
       <div className="ledger-card">
@@ -211,32 +178,13 @@ function EmployeesTab({ employees, departments, reload }) {
       </div>
       <div className="ledger-card">
         <h2 className="card-title">רשימת עובדים ({employees.length})</h2>
-        <div className="form-row">
-          <label>חיפוש<input value={filterText} onChange={(e) => setFilterText(e.target.value)} placeholder="שם או מספר עובד" /></label>
-          <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-            <input type="checkbox" checked={onlyUnassigned} onChange={(e) => setOnlyUnassigned(e.target.checked)} />
-            רק עובדים ללא מחלקה
-          </label>
-        </div>
-        <div className="form-row">
-          <label>שיוך העובדים המסומנים ({selected.length}) למחלקה
-            <select value={assignDep} onChange={(e) => setAssignDep(e.target.value)}>
-              <option value="">בחרי מחלקה</option>
-              {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
-          </label>
-          <button className="btn btn-primary" disabled={!selected.length || !assignDep} onClick={() => doAssign("add")}>שיוך</button>
-          <button className="btn btn-ghost" disabled={!selected.length || !assignDep} onClick={() => doAssign("remove")}>הסרת שיוך</button>
-        </div>
-        {assignMsg && <div className="form-ok">{assignMsg}</div>}
         {employees.length === 0 ? <p className="empty-note">עדיין לא הוזנו עובדים.</p> : (
           <table className="ledger-table">
-            <thead><tr><th><input type="checkbox" checked={allVisibleSelected} onChange={toggleAll} title="סימון כל המוצגים" /></th><th>שם פרטי</th><th>שם משפחה</th><th>מספר עובד</th><th>מחלקות</th><th></th></tr></thead>
+            <thead><tr><th>שם פרטי</th><th>שם משפחה</th><th>מספר עובד</th><th></th></tr></thead>
             <tbody>
-              {visible.map((e) => (
+              {employees.map((e) => (
                 <tr key={e.id}>
-                  <td><input type="checkbox" checked={selected.includes(e.id)} onChange={() => toggleOne(e.id)} /></td>
-                  <td>{e.firstName}</td><td>{e.lastName}</td><td className="mono">{e.employeeNumber}</td><td>{depNames(e)}</td>
+                  <td>{e.firstName}</td><td>{e.lastName}</td><td className="mono">{e.employeeNumber}</td>
                   <td className="cell-end"><button className="btn btn-ghost btn-sm" onClick={() => remove(e.id)}>הסרה</button></td>
                 </tr>
               ))}
