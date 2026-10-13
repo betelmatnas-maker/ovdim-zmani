@@ -107,8 +107,8 @@ function EmployeesTab({ employees, departments, reload }) {
   const downloadTemplate = async () => {
     const XLSX = await import("xlsx");
     const ws = XLSX.utils.aoa_to_sheet([
-      ["שם פרטי", "שם משפחה", "מספר עובד", "מחלקה"],
-      ["דנה", "כהן", "1001", "גן ילדים"],
+      ["שם פרטי", "שם משפחה", "מספר עובד"],
+      ["דנה", "כהן", "1001"],
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "עובדים");
@@ -145,8 +145,8 @@ function EmployeesTab({ employees, departments, reload }) {
       <div className="ledger-card">
         <h2 className="card-title">ייבוא עובדים מקובץ אקסל</h2>
         <p className="empty-note">
-          העמודות בקובץ, לפי הסדר: שם פרטי | שם משפחה | מספר עובד | מחלקה (השורה הראשונה היא כותרות).
-          מחלקה שעוד לא קיימת תיווצר אוטומטית. את מספר המחלקה והתעריף אפשר להשלים אחר כך בלשונית "מחלקות".
+          העמודות בקובץ, לפי הסדר: שם פרטי | שם משפחה | מספר עובד (השורה הראשונה היא כותרות).
+          אפשר להוסיף עמודה רביעית "מחלקה" - אם תמולא, המחלקה תיווצר אוטומטית והעובד ישויך אליה.
         </p>
         <div className="form-row">
           <label className="btn btn-primary" style={{ cursor: "pointer" }}>
