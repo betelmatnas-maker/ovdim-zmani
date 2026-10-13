@@ -97,8 +97,37 @@ function EmployeesTab({ employees, departments, reload }) {
   };
 
   const remove = async (id) => {
+    if (!window.confirm("הסרת עובד מוחקת גם את כל דיווחי הנוכחות שלו ואי אפשר לשחזר. אם העובד פשוט לא עובד כרגע, עדיף לסמן אותו כ'לא פעיל'. למחוק?")) return;
     await api(`/api/employees/${id}`, { method: "DELETE" });
     await reload();
+  };
+
+  const [selected, setSelected] = useState([]);
+  const [filterText, setFilterText] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusMsg, setStatusMsg] = useState("");
+
+  const visible = employees.filter((e) => {
+    if (statusFilter === "active" && e.active === false) return false;
+    if (statusFilter === "inactive" && e.active !== false) return false;
+    const q = filterText.trim();
+    if (!q) return true;
+    return (e.lastName + " " + e.firstName).includes(q) || e.employeeNumber.includes(q);
+  });
+  const allVisibleSelected = visible.length > 0 && visible.every((e) => selected.includes(e.id));
+  const toggleOne = (id) => setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  const toggleAll = () => setSelected(allVisibleSelected
+    ? selected.filter((id) => !visible.some((e) => e.id === id))
+    : Array.from(new Set([...selected, ...visible.map((e) => e.id)])));
+
+  const setStatus = async (ids, active) => {
+    setStatusMsg("");
+    try {
+      const r = await api("/api/employees/status", { method: "POST", body: { employeeIds: ids, active } });
+      setStatusMsg(`${r.changed} עובדים סומנו כ${active ? "פעילים" : "לא פעילים"}.`);
+      setSelected([]);
+      await reload();
+    } catch (e) { setStatusMsg(e.message); }
   };
 
   const [importing, setImporting] = useState(false);
@@ -107,8 +136,8 @@ function EmployeesTab({ employees, departments, reload }) {
   const downloadTemplate = async () => {
     const XLSX = await import("xlsx");
     const ws = XLSX.utils.aoa_to_sheet([
-      ["שם פרטי", "שם משפחה", "מספר עובד"],
-      ["דנה", "כהן", "1001"],
+      ["שם משפחה", "שם פרטי", "מספר עובד"],
+      ["כהן", "דנה", "1001"],
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "עובדים");
@@ -127,7 +156,7 @@ function EmployeesTab({ employees, departments, reload }) {
       const table = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" });
       const rows = table.slice(1)
         .filter((r) => r.some((c) => String(c).trim() !== ""))
-        .map((r) => ({ firstName: r[0], lastName: r[1], employeeNumber: r[2], department: r[3] }));
+        .map((r) => ({ lastName: r[0], firstName: r[1], employeeNumber: r[2], department: r[3] }));
       if (rows.length === 0) throw new Error("לא נמצאו שורות בקובץ. ודאי שהשורה הראשונה היא כותרות.");
       const result = await api("/api/employees/import", { method: "POST", body: { rows } });
       setImportMsg({ ok: true, result });
@@ -142,7 +171,7 @@ function EmployeesTab({ employees, departments, reload }) {
       <div className="ledger-card">
         <h2 className="card-title">ייבוא עובדים מקובץ אקסל</h2>
         <p className="empty-note">
-          העמודות בקובץ, לפי הסדר: שם פרטי | שם משפחה | מספר עובד (השורה הראשונה היא כותרות).
+          העמודות בקובץ, לפי הסדר: שם משפחה | שם פרטי | מספר עובד (השורה הראשונה היא כותרות).
           אפשר להוסיף עמודה רביעית "מחלקה" - אם תמולא, המחלקה תיווצר אוטומטית והעובד ישויך אליה.
         </p>
         <div className="form-row">
@@ -169,8 +198,8 @@ function EmployeesTab({ employees, departments, reload }) {
       <div className="ledger-card">
         <h2 className="card-title">הוספת עובד חדש</h2>
         <div className="form-row">
-          <label>שם פרטי<input value={firstName} onChange={(e) => setFirstName(e.target.value)} /></label>
           <label>שם משפחה<input value={lastName} onChange={(e) => setLastName(e.target.value)} /></label>
+          <label>שם פרטי<input value={firstName} onChange={(e) => setFirstName(e.target.value)} /></label>
           <label>מספר עובד<input value={number} onChange={(e) => setNumber(e.target.value)} /></label>
           <button className="btn btn-primary" onClick={add}>הוספה</button>
         </div>
@@ -178,14 +207,33 @@ function EmployeesTab({ employees, departments, reload }) {
       </div>
       <div className="ledger-card">
         <h2 className="card-title">רשימת עובדים ({employees.length})</h2>
+        <div className="form-row">
+          <label>חיפוש<input value={filterText} onChange={(e) => setFilterText(e.target.value)} placeholder="שם או מספר עובד" /></label>
+          <label>הצגה
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="all">כל העובדים</option>
+              <option value="active">פעילים בלבד</option>
+              <option value="inactive">לא פעילים בלבד</option>
+            </select>
+          </label>
+          <button className="btn btn-primary" disabled={!selected.length} onClick={() => setStatus(selected, true)}>סימון המסומנים ({selected.length}) כפעילים</button>
+          <button className="btn btn-ghost" disabled={!selected.length} onClick={() => setStatus(selected, false)}>סימון המסומנים כלא פעילים</button>
+        </div>
+        <p className="hint-text">עובד "לא פעיל" לא מופיע ברשימה שהרכזים רואים, ודיווחים קודמים שלו נשמרים.</p>
+        {statusMsg && <div className="form-ok">{statusMsg}</div>}
         {employees.length === 0 ? <p className="empty-note">עדיין לא הוזנו עובדים.</p> : (
           <table className="ledger-table">
-            <thead><tr><th>שם פרטי</th><th>שם משפחה</th><th>מספר עובד</th><th></th></tr></thead>
+            <thead><tr><th><input type="checkbox" checked={allVisibleSelected} onChange={toggleAll} title="סימון כל המוצגים" /></th><th>שם משפחה</th><th>שם פרטי</th><th>מספר עובד</th><th>סטטוס</th><th></th></tr></thead>
             <tbody>
-              {employees.map((e) => (
-                <tr key={e.id}>
-                  <td>{e.firstName}</td><td>{e.lastName}</td><td className="mono">{e.employeeNumber}</td>
-                  <td className="cell-end"><button className="btn btn-ghost btn-sm" onClick={() => remove(e.id)}>הסרה</button></td>
+              {visible.map((e) => (
+                <tr key={e.id} style={e.active === false ? { opacity: 0.55 } : undefined}>
+                  <td><input type="checkbox" checked={selected.includes(e.id)} onChange={() => toggleOne(e.id)} /></td>
+                  <td>{e.lastName}</td><td>{e.firstName}</td><td className="mono">{e.employeeNumber}</td>
+                  <td>{e.active === false ? "לא פעיל" : "פעיל"}</td>
+                  <td className="cell-end">
+                    <button className="btn btn-ghost btn-sm" onClick={() => setStatus([e.id], e.active === false)}>{e.active === false ? "הפעלה" : "השבתה"}</button>{" "}
+                    <button className="btn btn-ghost btn-sm" onClick={() => remove(e.id)}>הסרה</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -519,7 +567,7 @@ function ReportsTab({ employees, departments, currentMonth }) {
                 const url = `/api/reports/pdf/employee/${e.id}`;
                 return (
                   <tr key={e.id}>
-                    <td>{e.firstName} {e.lastName}</td><td className="mono">{e.employeeNumber}</td>
+                    <td>{e.lastName} {e.firstName}</td><td className="mono">{e.employeeNumber}</td>
                     <td className="cell-end">
                       <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => download(url, `דוח-${e.firstName}-${e.lastName}.pdf`)}>
                         {busy === url ? "מוריד…" : "הורדת PDF"}
