@@ -9,16 +9,18 @@ async function handler(req, res) {
       const myIds = mine.map((m) => m.departmentId);
       // A coordinator sees all employees, but only if the admin gave him at least one
       // department. A coordinator with no departments sees nothing.
-      where = myIds.length === 0 ? { id: "__none__" } : {};
+      where = myIds.length === 0 ? { id: "__none__" } : { active: true };
     }
     const employees = await prisma.employee.findMany({
       where,
-      orderBy: { firstName: "asc" },
+      orderBy: { lastName: "asc" },
       include: { departments: { select: { departmentId: true } } },
     });
+    const sorted = employees.slice().sort((a, b) =>
+      a.lastName.localeCompare(b.lastName, "he") || a.firstName.localeCompare(b.firstName, "he"));
     res.status(200).json(
-      employees.map((e) => ({
-        id: e.id, employeeNumber: e.employeeNumber, firstName: e.firstName, lastName: e.lastName,
+      sorted.map((e) => ({
+        id: e.id, active: e.active, employeeNumber: e.employeeNumber, firstName: e.firstName, lastName: e.lastName,
         departmentIds: e.departments.map((d) => d.departmentId),
       }))
     );
