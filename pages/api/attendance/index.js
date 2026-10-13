@@ -21,6 +21,20 @@ async function handler(req, res) {
       res.status(400).json({ error: "שעת היציאה חייבת להיות אחרי שעת הכניסה." });
       return;
     }
+    if (req.session.role !== "admin") {
+      const emp = await prisma.employee.findUnique({ where: { id: employeeId } });
+      if (!emp || !emp.active) {
+        res.status(403).json({ error: "העובד אינו פעיל." });
+        return;
+      }
+      const allowed = await prisma.coordinatorDepartment.findUnique({
+        where: { userId_departmentId: { userId: req.session.sub, departmentId } },
+      });
+      if (!allowed) {
+        res.status(403).json({ error: "אין לך הרשאה לדווח על מחלקה זו." });
+        return;
+      }
+    }
     const entry = await prisma.attendanceEntry.create({
       data: {
         employeeId,
