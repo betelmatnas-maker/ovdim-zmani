@@ -33,7 +33,9 @@ export default function CoordinatorPage() {
   }, [router]);
 
   const emp = employees.find((e) => e.id === empId);
-  const empDepartments = emp ? departments.filter((d) => (emp.departmentIds || []).includes(d.id)) : [];
+  const empDepartments = !emp ? []
+    : (emp.departmentIds || []).length === 0 ? departments
+    : departments.filter((d) => emp.departmentIds.includes(d.id));
   const filtered = employees.filter((e) => !query || fullName(e).includes(query) || e.employeeNumber.includes(query));
 
   const startOver = () => { setSubmittedFor(null); setEmpId(""); setDepId(""); setQuery(""); };
