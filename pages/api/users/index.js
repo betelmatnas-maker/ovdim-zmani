@@ -10,10 +10,13 @@ async function handler(req, res) {
   if (req.method === "GET") {
     const users = await prisma.user.findMany({
       where: { role: "coordinator" },
-      select: { id: true, username: true, fullName: true, createdAt: true },
+      select: { id: true, username: true, fullName: true, createdAt: true, departments: { select: { departmentId: true } } },
       orderBy: { fullName: "asc" },
     });
-    res.status(200).json(users);
+    res.status(200).json(users.map((u) => ({
+      id: u.id, username: u.username, fullName: u.fullName, createdAt: u.createdAt,
+      departmentIds: u.departments.map((d) => d.departmentId),
+    })));
     return;
   }
 
