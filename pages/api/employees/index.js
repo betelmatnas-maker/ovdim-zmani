@@ -3,8 +3,16 @@ const { requireAuth } = require("../../../lib/auth");
 
 async function handler(req, res) {
   if (req.method === "GET") {
-    const where = req.session.role === "admin" ? {}
-      : { departments: { some: { department: { coordinators: { some: { userId: req.session.sub } } } } } };
+    let where = {};
+    if (req.session.role !== "admin") {
+      const mine = await prisma.coordinatorDepartment.findMany({ where: { userId: req.session.sub } });
+      const myIds = mine.map((m) => m.departmentId);
+      // A coordinator with no departments sees nothing. Employees not yet assigned to
+      // any department are visible to every coordinator that has at least one department.
+      where = myIds.length === 0
+        ? { id: "__none__" }
+        : { OR: [{ departments: { none: {} } }, { departments: { some: { departmentId: { in: myIds } } } }] };
+    }
     const employees = await prisma.employee.findMany({
       where,
       orderBy: { firstName: "asc" },

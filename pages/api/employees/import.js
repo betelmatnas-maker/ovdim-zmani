@@ -36,13 +36,13 @@ async function run(req, res) {
     const lastName = clean(rows[i].lastName);
     const employeeNumber = clean(rows[i].employeeNumber);
     const deptName = clean(rows[i].department);
-    if (!firstName || !lastName || !employeeNumber || !deptName) {
-      result.errors.push(`שורה ${line}: חסר שם פרטי, שם משפחה, מספר עובד או מחלקה.`);
+    if (!firstName || !lastName || !employeeNumber) {
+      result.errors.push(`שורה ${line}: חסר שם פרטי, שם משפחה או מספר עובד.`);
       continue;
     }
     try {
-      let deptId = deptCache[deptName];
-      if (!deptId) {
+      let deptId = deptName ? deptCache[deptName] : null;
+      if (deptName && !deptId) {
         const dep = await prisma.department.create({ data: { name: deptName, departmentNumber: "", rate: "" } });
         deptId = dep.id;
         deptCache[deptName] = deptId;
@@ -61,11 +61,13 @@ async function run(req, res) {
         empId = emp.id;
         result.createdEmployees++;
       }
-      const link = await prisma.employeeDepartment.createMany({
-        data: [{ employeeId: empId, departmentId: deptId }],
-        skipDuplicates: true,
-      });
-      result.links += link.count;
+      if (deptId) {
+        const link = await prisma.employeeDepartment.createMany({
+          data: [{ employeeId: empId, departmentId: deptId }],
+          skipDuplicates: true,
+        });
+        result.links += link.count;
+      }
     } catch (e) {
       result.errors.push(`שורה ${line}: שגיאה בעיבוד (${employeeNumber}).`);
     }
