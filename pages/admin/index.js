@@ -505,6 +505,13 @@ function ReportsTab({ employees, departments, currentMonth }) {
     ? `${currentMonth}-${String(new Date(Number(currentMonth.slice(0, 4)), Number(currentMonth.slice(5, 7)), 0).getDate()).padStart(2, "0")}`
     : "";
   const [periodEmp, setPeriodEmp] = useState("");
+  const [periodQuery, setPeriodQuery] = useState("");
+  const periodMatches = employees.filter((e) => {
+    const q = periodQuery.trim();
+    return !q || (e.lastName + " " + e.firstName).includes(q) || (e.firstName + " " + e.lastName).includes(q) || e.employeeNumber.includes(q);
+  }).slice(0, 50);
+  const periodSelectedLabel = periodEmp === "all" ? "כל העובדים (דף לכל עובד)"
+    : (() => { const e = employees.find((x) => x.id === periodEmp); return e ? `${e.lastName} ${e.firstName} · ${e.employeeNumber}` : ""; })();
   const [periodFrom, setPeriodFrom] = useState(monthStart);
   const [periodTo, setPeriodTo] = useState(monthEnd);
   useEffect(() => { setPeriodFrom((v) => v || monthStart); setPeriodTo((v) => v || monthEnd); }, [monthStart, monthEnd]);
@@ -546,12 +553,29 @@ function ReportsTab({ employees, departments, currentMonth }) {
         <h2 className="card-title">דוח לפי תקופה</h2>
         <p className="hint-text">בחרי עובד (או כל העובדים) ותקופה, ואפשר להוריד PDF עם כל הדיווחים שלו בתקופה, מסוכם לפי מחלקה.</p>
         <div className="form-row">
-          <label>עובד
-            <select value={periodEmp} onChange={(e) => setPeriodEmp(e.target.value)}>
-              <option value="">בחרי עובד</option>
-              <option value="all">כל העובדים (דף לכל עובד)</option>
-              {employees.map((e) => <option key={e.id} value={e.id}>{e.lastName} {e.firstName} · {e.employeeNumber}</option>)}
-            </select>
+          <label style={{ flex: "1 1 280px" }}>עובד
+            <input
+              className="search-input"
+              placeholder="חיפוש לפי שם משפחה, שם פרטי או מספר עובד"
+              value={periodEmp ? periodSelectedLabel : periodQuery}
+              onChange={(e) => { setPeriodQuery(e.target.value); setPeriodEmp(""); }}
+              onFocus={() => { if (periodEmp) { setPeriodEmp(""); setPeriodQuery(""); } }}
+            />
+            {!periodEmp && (
+              <div className="combo-list">
+                {!periodQuery.trim() && (
+                  <button type="button" className="combo-item" onClick={() => { setPeriodEmp("all"); setPeriodQuery(""); }}>
+                    <span>כל העובדים (דף לכל עובד)</span><span></span>
+                  </button>
+                )}
+                {periodMatches.length === 0 && <div className="combo-empty">לא נמצאו עובדים.</div>}
+                {periodMatches.map((e) => (
+                  <button type="button" key={e.id} className="combo-item" onClick={() => { setPeriodEmp(e.id); setPeriodQuery(""); }}>
+                    <span>{e.lastName} {e.firstName}</span><span className="mono">{e.employeeNumber}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </label>
           <label>מתאריך<input type="date" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} /></label>
           <label>עד תאריך<input type="date" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} /></label>
@@ -562,8 +586,8 @@ function ReportsTab({ employees, departments, currentMonth }) {
       </div>
 
       <div className="ledger-card">
-        <h2 className="card-title">דוחות PDF לפי מחלקה</h2>
-        <p className="hint-text">לכל מחלקה כפתור נפרד להורדת PDF, עם דף נפרד לכל עובד לפי סדר א׳-ב׳.</p>
+        <h2 className="card-title">דוחות לפי מחלקה (PDF ואקסל)</h2>
+        <p className="hint-text">לכל מחלקה אפשר להוריד PDF (דף נפרד לכל עובד לפי סדר א׳-ב׳) או קובץ אקסל של המחלקה לחודש הנוכחי.</p>
         {departments.length === 0 ? <p className="empty-note">עדיין לא הוזנו מחלקות.</p> : (
           <table className="ledger-table">
             <thead><tr><th>מחלקה</th><th>עובדים בדוח</th><th></th></tr></thead>
@@ -576,7 +600,10 @@ function ReportsTab({ employees, departments, currentMonth }) {
                     <td>{d.name}</td><td className="mono">{count}</td>
                     <td className="cell-end">
                       <button className="btn btn-ghost btn-sm" disabled={count === 0 || busy} onClick={() => download(url, `דוח-${d.name}.pdf`)}>
-                        {busy === url ? "מוריד…" : "הורדת PDF למחלקה"}
+                        {busy === url ? "מוריד…" : "הורדת PDF"}
+                      </button>{" "}
+                      <button className="btn btn-ghost btn-sm" disabled={count === 0 || busy} onClick={() => download(`/api/reports/excel?departmentId=${d.id}`, `דוח-${d.name}.xlsx`)}>
+                        {busy === `/api/reports/excel?departmentId=${d.id}` ? "מוריד…" : "הורדת אקסל"}
                       </button>
                     </td>
                   </tr>
