@@ -1,7 +1,7 @@
 const prisma = require("../../../../../lib/db");
 const { requireAuth } = require("../../../../../lib/auth");
 const { htmlToPdfBuffer } = require("../../../../../lib/pdf");
-const { employeeSectionHtml, reportDocumentHtml } = require("../../../../../lib/pdfTemplate");
+const { employeeSectionHtml, periodSectionHtml, reportDocumentHtml } = require("../../../../../lib/pdfTemplate");
 const { computeReportRows } = require("../../../../../lib/reportData");
 const { fullName } = require("../../../../../lib/hours");
 
@@ -10,12 +10,17 @@ async function handler(req, res) {
     res.status(405).end();
     return;
   }
-  if (req.session.role !== "admin") {
-    res.status(403).json({ error: "רק חשבת השכר יכולה להוריד דוחות." });
-    return;
-  }
-
   const { id } = req.query;
+  const isAdmin = req.session.role === "admin";
+  if (!isAdmin) {
+    const allowed = await prisma.coordinatorDepartment.findUnique({
+      where: { userId_departmentId: { userId: req.session.sub, departmentId: id } },
+    });
+    if (!allowed) {
+      res.status(403).json({ error: "אין לך הרשאה לדוח של מחלקה זו." });
+      return;
+    }
+  }
   const [dep, departments, setting] = await Promise.all([
     prisma.department.findUnique({ where: { id } }),
     prisma.department.findMany(),
@@ -48,9 +53,13 @@ async function handler(req, res) {
     entriesByEmp[en.employeeId].push(en);
   });
 
-  const sections = employees.map((emp) =>
-    employeeSectionHtml(emp, entriesByEmp[emp.id] || [], departmentsById, currentMonth)
-  );
+  const sections = employees.map((emp) => {
+    if (isAdmin) return employeeSectionHtml(emp, entriesByEmp[emp.id] || [], departmentsById, currentMonth);
+    // Coordinator: only this department, only the current month (+ unpaid corrections).
+    const mine = (entriesByEmp[emp.id] || []).filter((en) => en.departmentId === id &&
+      ((!en.isCorrection && en.date.slice(0, 7) === currentMonth) || (en.isCorrection && !en.paid)));
+    return periodSectionHtml(emp, mine, departmentsById, `חודש: ${currentMonth} · מחלקה: ${dep.name}`, "הפרשים ממתינים לתשלום");
+  });
   const html = reportDocumentHtml(sections);
   const pdf = await htmlToPdfBuffer(html);
 
