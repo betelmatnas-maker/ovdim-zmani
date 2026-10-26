@@ -38,6 +38,32 @@ export default function CoordinatorPage() {
   const empDepartments = emp ? departments : [];
   const filtered = employees.filter((e) => !query || fullName(e).includes(query) || e.employeeNumber.includes(query));
 
+  const [monthBusy, setMonthBusy] = useState(null);
+  const downloadMonthly = async (dep) => {
+    setMonthBusy(dep.id);
+    try {
+      const res = await fetch(`/api/reports/pdf/department/${dep.id}`, { credentials: "include" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "שגיאה בהורדת הקובץ. נסו שוב בעוד כמה שניות.");
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename\*=UTF-8''(.+)$/);
+      const filename = match ? decodeURIComponent(match[1]) : `דוח-${dep.name}.pdf`;
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (e) {
+      alert("שגיאת רשת בהורדת הקובץ. נסו שוב.");
+    } finally {
+      setMonthBusy(null);
+    }
+  };
+
   const startOver = () => { setSubmittedFor(null); setEmpId(""); setDepId(""); setQuery(""); };
   const finish = () => { startOver(); setSessionEnded(true); };
 
@@ -80,6 +106,20 @@ export default function CoordinatorPage() {
           </div>
         )}
       </div>
+
+      {currentMonth && departments.length > 0 && (
+        <div className="ledger-card">
+          <h2 className="card-title">הורדת דוח החודש</h2>
+          <p className="hint-text">PDF עם דף נפרד לכל עובד שדווח עליו החודש במחלקה, לפי סדר א׳-ב׳.</p>
+          <div className="chip-row">
+            {departments.map((d) => (
+              <button key={d.id} className="btn btn-ghost btn-sm" disabled={monthBusy !== null} onClick={() => downloadMonthly(d)}>
+                {monthBusy === d.id ? "מכין..." : `הורדת דוח — ${d.name}`}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {emp && currentMonth && <TravelEligibilityCard empId={empId} currentMonth={currentMonth} />}
 
