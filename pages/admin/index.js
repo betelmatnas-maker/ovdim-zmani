@@ -500,6 +500,17 @@ function ReportsTab({ employees, departments, currentMonth }) {
     }
   };
 
+  const monthStart = currentMonth ? `${currentMonth}-01` : "";
+  const monthEnd = currentMonth
+    ? `${currentMonth}-${String(new Date(Number(currentMonth.slice(0, 4)), Number(currentMonth.slice(5, 7)), 0).getDate()).padStart(2, "0")}`
+    : "";
+  const [periodEmp, setPeriodEmp] = useState("");
+  const [periodFrom, setPeriodFrom] = useState(monthStart);
+  const [periodTo, setPeriodTo] = useState(monthEnd);
+  useEffect(() => { setPeriodFrom((v) => v || monthStart); setPeriodTo((v) => v || monthEnd); }, [monthStart, monthEnd]);
+  const periodUrl = `/api/reports/pdf/period?employeeId=${encodeURIComponent(periodEmp)}&from=${periodFrom}&to=${periodTo}`;
+  const periodReady = periodEmp && periodFrom && periodTo && periodFrom <= periodTo;
+
   const sortedDepartments = [...departments].sort((a, b) => a.name.localeCompare(b.name, "he"));
   const deptCount = (depId) => new Set(rows.filter((r) => r.monthly > 0 && r.departmentId === depId).map((r) => r.employeeId)).size;
 
@@ -529,6 +540,25 @@ function ReportsTab({ employees, departments, currentMonth }) {
             <button className="btn btn-ghost btn-sm" onClick={() => setConfirmPaid(false)}>ביטול</button>
           </div>
         )}
+      </div>
+
+      <div className="ledger-card">
+        <h2 className="card-title">דוח לפי תקופה</h2>
+        <p className="hint-text">בחרי עובד (או כל העובדים) ותקופה, ואפשר להוריד PDF עם כל הדיווחים שלו בתקופה, מסוכם לפי מחלקה.</p>
+        <div className="form-row">
+          <label>עובד
+            <select value={periodEmp} onChange={(e) => setPeriodEmp(e.target.value)}>
+              <option value="">בחרי עובד</option>
+              <option value="all">כל העובדים (דף לכל עובד)</option>
+              {employees.map((e) => <option key={e.id} value={e.id}>{e.lastName} {e.firstName} · {e.employeeNumber}</option>)}
+            </select>
+          </label>
+          <label>מתאריך<input type="date" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} /></label>
+          <label>עד תאריך<input type="date" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} /></label>
+          <button className="btn btn-primary" disabled={!periodReady || busy} onClick={() => download(periodUrl, "דוח-תקופה.pdf")}>
+            {busy === periodUrl ? "מכין..." : "הורדת PDF"}
+          </button>
+        </div>
       </div>
 
       <div className="ledger-card">
