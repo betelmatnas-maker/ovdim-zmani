@@ -16,7 +16,18 @@ async function handler(req, res) {
 
   const setting = await prisma.setting.findUnique({ where: { id: 1 } });
   const currentMonth = setting ? setting.currentMonth : null;
-  const rows = await computeReportRows(currentMonth);
+  const { departmentId } = req.query;
+  let deptName = "";
+  let rows = await computeReportRows(currentMonth);
+  if (departmentId) {
+    const dep = await prisma.department.findUnique({ where: { id: departmentId } });
+    if (!dep) {
+      res.status(404).json({ error: "מחלקה לא נמצאה." });
+      return;
+    }
+    deptName = dep.name;
+    rows = rows.filter((r) => r.departmentId === departmentId);
+  }
   rows.sort((a, b) =>
     String(a.lastName).localeCompare(String(b.lastName), "he") ||
     String(a.firstName).localeCompare(String(b.firstName), "he") ||
@@ -63,7 +74,9 @@ async function handler(req, res) {
   XLSX.utils.book_append_sheet(wb, wsCorrections, "הפרשים");
 
   const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-  const fname = `דוח-מרוכז-${currentMonth || "ללא-חודש"}.xlsx`;
+  const fname = deptName
+    ? `דוח-${deptName}-${currentMonth || "ללא-חודש"}.xlsx`
+    : `דוח-מרוכז-${currentMonth || "ללא-חודש"}.xlsx`;
 
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(fname)}`);
