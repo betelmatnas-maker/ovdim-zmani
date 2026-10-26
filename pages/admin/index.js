@@ -504,6 +504,11 @@ function ReportsTab({ employees, departments, currentMonth }) {
   const monthEnd = currentMonth
     ? `${currentMonth}-${String(new Date(Number(currentMonth.slice(0, 4)), Number(currentMonth.slice(5, 7)), 0).getDate()).padStart(2, "0")}`
     : "";
+  const [empSearch, setEmpSearch] = useState("");
+  const empFiltered = employees.filter((e) => {
+    const q = empSearch.trim();
+    return !q || (e.lastName + " " + e.firstName).includes(q) || (e.firstName + " " + e.lastName).includes(q) || e.employeeNumber.includes(q);
+  });
   const [periodEmp, setPeriodEmp] = useState("");
   const [periodQuery, setPeriodQuery] = useState("");
   const periodMatches = employees.filter((e) => {
@@ -616,11 +621,24 @@ function ReportsTab({ employees, departments, currentMonth }) {
 
       <div className="ledger-card">
         <h2 className="card-title">דוחות עובד בודד (PDF)</h2>
-        {employees.length === 0 ? <p className="empty-note">אין עובדים במערכת.</p> : (
+        {employees.length > 0 && (
+          <div className="form-row">
+            <label style={{ flex: "1 1 280px" }}>חיפוש
+              <input
+                className="search-input"
+                placeholder="חיפוש לפי שם משפחה, שם פרטי או מספר עובד"
+                value={empSearch}
+                onChange={(e) => setEmpSearch(e.target.value)}
+              />
+            </label>
+          </div>
+        )}
+        {employees.length === 0 ? <p className="empty-note">אין עובדים במערכת.</p>
+        : empFiltered.length === 0 ? <p className="empty-note">לא נמצאו עובדים.</p> : (
           <table className="ledger-table">
-            <thead><tr><th>שם</th><th>מספר עובד</th><th>מחלקות</th><th></th></tr></thead>
+            <thead><tr><th>שם</th><th>מספר עובד</th><th></th></tr></thead>
             <tbody>
-              {employees.map((e) => {
+              {empFiltered.map((e) => {
                 const url = `/api/reports/pdf/employee/${e.id}`;
                 return (
                   <tr key={e.id}>
