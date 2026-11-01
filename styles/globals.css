@@ -81,5 +81,6 @@ body { font-family: 'Heebo', 'Segoe UI', Arial, sans-serif; color: #22262B; }
   .ledger-main { padding: 20px 12px 60px; }
 }
 
-.link-btn { background:none; border:none; padding:0; font:inherit; color:#1F4E79; text-decoration:underline; cursor:pointer; text-align:right; }
-.link-btn:hover { color:#B5532A; }
+.name-link { background:none; border:none; padding:0; font:inherit; color:#1F4E79; text-decoration:underline; cursor:pointer; text-align:right; }
+.name-link:hover { color:#B5532A; }
+.lock-banner { background:#FBEAE4; border:1px solid #E3B8A6; color:#8A3A1E; padding:12px 16px; border-radius:3px; margin-bottom:16px; font-weight:600; }
