@@ -11,6 +11,7 @@ export default function CoordinatorPage() {
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [currentMonth, setCurrentMonth] = useState("");
+  const [locked, setLocked] = useState(false);
 
   const [empId, setEmpId] = useState("");
   const [depId, setDepId] = useState("");
@@ -27,7 +28,7 @@ export default function CoordinatorPage() {
         const [emps, deps, month] = await Promise.all([
           api("/api/employees"), api("/api/departments"), api("/api/month"),
         ]);
-        setEmployees(emps); setDepartments(deps); setCurrentMonth(month.currentMonth || "");
+        setEmployees(emps); setDepartments(deps); setCurrentMonth(month.currentMonth || ""); setLocked(!!month.reportingLocked);
       })
       .finally(() => setLoading(false));
   }, [router]);
@@ -85,6 +86,9 @@ export default function CoordinatorPage() {
   return (
     <Shell user={user}>
       <div className="back-bar"><h1 className="section-title">דיווח נוכחות — רכז</h1></div>
+      {locked && (
+        <div className="lock-banner">הדיווח לחודש הנוכחי ננעל על ידי חשבת השכר. אפשר לצפות ולהוריד דוחות, אבל לא להוסיף או לשנות שעות. הדיווח ייפתח שוב עם פתיחת החודש הבא.</div>
+      )}
 
       <div className="ledger-card">
         <h2 className="card-title">1. בחירת עובד</h2>
@@ -121,7 +125,7 @@ export default function CoordinatorPage() {
         </div>
       )}
 
-      {emp && currentMonth && <TravelEligibilityCard empId={empId} currentMonth={currentMonth} />}
+      {emp && currentMonth && <TravelEligibilityCard empId={empId} currentMonth={currentMonth} locked={locked} />}
 
       {emp && (
         <div className="ledger-card">
@@ -141,6 +145,7 @@ export default function CoordinatorPage() {
           empId={empId}
           depId={depId}
           currentMonth={currentMonth}
+          locked={locked}
           onOpenCorrection={() => setShowCorrection(true)}
           onSubmitted={() => setSubmittedFor(fullName(emp))}
         />
@@ -167,7 +172,7 @@ export default function CoordinatorPage() {
   );
 }
 
-function TravelEligibilityCard({ empId, currentMonth }) {
+function TravelEligibilityCard({ empId, currentMonth, locked }) {
   const [value, setValue] = useState(undefined);
 
   useEffect(() => {
@@ -185,15 +190,15 @@ function TravelEligibilityCard({ empId, currentMonth }) {
       <h2 className="card-title">2. זכאות לנסיעות — {monthLabel(currentMonth)}</h2>
       <p className="hint-text">מסמנים פעם אחת לחודש עבור העובד, ללא קשר למחלקה שבה עובד החודש.</p>
       <div className="chip-row">
-        <button className={"chip " + (value === "eligible" ? "is-active" : "")} onClick={() => setStatus("eligible")}>זכאי לנסיעות</button>
-        <button className={"chip " + (value === "not_eligible" ? "is-active" : "")} onClick={() => setStatus("not_eligible")}>לא זכאי לנסיעות</button>
+        <button className={"chip " + (value === "eligible" ? "is-active" : "")} disabled={locked} onClick={() => setStatus("eligible")}>זכאי לנסיעות</button>
+        <button className={"chip " + (value === "not_eligible" ? "is-active" : "")} disabled={locked} onClick={() => setStatus("not_eligible")}>לא זכאי לנסיעות</button>
       </div>
       {!value && <p className="empty-note" style={{ marginTop: 10 }}>עדיין לא סומן לחודש זה.</p>}
     </div>
   );
 }
 
-function ReportSheet({ empId, depId, currentMonth, onOpenCorrection, onSubmitted }) {
+function ReportSheet({ empId, depId, currentMonth, locked, onOpenCorrection, onSubmitted }) {
   const [entries, setEntries] = useState([]);
   const [submitted, setSubmitted] = useState(false);
   const bounds = monthBounds(currentMonth);
@@ -239,6 +244,7 @@ function ReportSheet({ empId, depId, currentMonth, onOpenCorrection, onSubmitted
 
   useEffect(() => { reload(); }, [reload]);
 
+  const readOnly = submitted || locked;
   const total = entries.reduce((s, en) => s + hoursBetween(en.timeIn, en.timeOut), 0);
 
   const addRow = async () => {
@@ -289,7 +295,7 @@ function ReportSheet({ empId, depId, currentMonth, onOpenCorrection, onSubmitted
         <span className={"badge " + (submitted ? "badge-submitted" : "badge-draft")}>{submitted ? "נשלח" : "בעריכה"}</span>
       </div>
       <table className="ledger-table">
-        <thead><tr><th>תאריך</th><th>כניסה</th><th>יציאה</th><th>שעות</th>{!submitted && <th></th>}</tr></thead>
+        <thead><tr><th>תאריך</th><th>כניסה</th><th>יציאה</th><th>שעות</th>{!readOnly && <th></th>}</tr></thead>
         <tbody>
           {entries.map((en) => (
             editId === en.id ? (
@@ -306,7 +312,7 @@ function ReportSheet({ empId, depId, currentMonth, onOpenCorrection, onSubmitted
             ) : (
             <tr key={en.id}>
               <td>{en.date}</td><td>{en.timeIn}</td><td>{en.timeOut}</td><td>{fmtHours(hoursBetween(en.timeIn, en.timeOut))}</td>
-              {!submitted && (
+              {!readOnly && (
                 <td className="cell-end">
                   <button className="btn btn-ghost btn-sm" onClick={() => startEdit(en)}>עריכה</button>{" "}
                   <button className="btn btn-ghost btn-sm" onClick={() => removeRow(en.id)}>הסרה</button>
@@ -321,7 +327,7 @@ function ReportSheet({ empId, depId, currentMonth, onOpenCorrection, onSubmitted
       {editErr && <div className="form-err">{editErr}</div>}
       <p className="stat-line">סה״כ שעות שדווחו: <strong>{fmtHours(total)}</strong></p>
 
-      {!submitted && (
+      {!readOnly && (
         <>
           <div className="form-row">
             <label>תאריך<input type="date" min={bounds.min} max={bounds.max} value={date} onChange={(e) => setDate(e.target.value)} /></label>
@@ -335,11 +341,11 @@ function ReportSheet({ empId, depId, currentMonth, onOpenCorrection, onSubmitted
 
       <div className="sheet-actions">
         {!submitted ? (
-          <button className="btn btn-primary" onClick={submit} disabled={entries.length === 0}>שליחת דיווח</button>
+          <button className="btn btn-primary" onClick={submit} disabled={entries.length === 0 || locked}>שליחת דיווח</button>
         ) : (
-          <button className="btn btn-secondary" onClick={reopen}>המשך לדווח</button>
+          <button className="btn btn-secondary" onClick={reopen} disabled={locked}>המשך לדווח</button>
         )}
-        <button className="btn btn-ghost" onClick={onOpenCorrection}>דיווח הפרשים</button>
+        <button className="btn btn-ghost" onClick={onOpenCorrection} disabled={locked}>דיווח הפרשים</button>
         <button className="btn btn-ghost" onClick={downloadPdf} disabled={pdfBusy}>
           {pdfBusy ? "מכין קובץ…" : "הורדת PDF"}
         </button>
