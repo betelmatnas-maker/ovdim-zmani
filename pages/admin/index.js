@@ -14,6 +14,7 @@ export default function AdminPage() {
   const [departments, setDepartments] = useState([]);
   const [coordinators, setCoordinators] = useState([]);
   const [currentMonth, setCurrentMonth] = useState("");
+  const [locked, setLocked] = useState(false);
 
   const reload = useCallback(async () => {
     const [emps, deps, month] = await Promise.all([
@@ -24,6 +25,7 @@ export default function AdminPage() {
     setEmployees(emps);
     setDepartments(deps);
     setCurrentMonth(month.currentMonth || "");
+    setLocked(!!month.reportingLocked);
   }, []);
 
   useEffect(() => {
@@ -73,7 +75,7 @@ export default function AdminPage() {
           reload={() => api("/api/users").then(setCoordinators)}
         />
       )}
-      {tab === "month" && <MonthTab currentMonth={currentMonth} reload={reload} />}
+      {tab === "month" && <MonthTab currentMonth={currentMonth} locked={locked} reload={reload} />}
       {tab === "reports" && (
         <ReportsTab employees={employees} departments={departments} currentMonth={currentMonth} />
       )}
@@ -417,7 +419,7 @@ function CoordinatorsTab({ coordinators, departments, reload }) {
   );
 }
 
-function MonthTab({ currentMonth, reload }) {
+function MonthTab({ currentMonth, locked, reload }) {
   const [val, setVal] = useState(currentMonth);
 
   useEffect(() => setVal(currentMonth), [currentMonth]);
@@ -428,11 +430,27 @@ function MonthTab({ currentMonth, reload }) {
     await reload();
   };
 
+  const toggleLock = async () => {
+    await api("/api/month", { method: "POST", body: { locked: !locked } });
+    await reload();
+  };
+
   return (
     <div className="panel">
       <div className="ledger-card">
         <h2 className="card-title">מצב נוכחי</h2>
         <p className="stat-line">החודש הפתוח לדיווח כרגע: <strong>{currentMonth ? monthLabel(currentMonth) : "לא נפתח חודש עדיין"}</strong></p>
+        <p className="stat-line">מצב הדיווח: <strong>{locked ? "נעול 🔒" : "פתוח לדיווח"}</strong></p>
+      </div>
+      <div className="ledger-card">
+        <h2 className="card-title">נעילת הדיווח</h2>
+        <p className="hint-text">
+          אחרי נעילה הרכזים לא יכולים להוסיף, לערוך או למחוק שעות, לשלוח דיווח, לשנות זכאות לנסיעות או לדווח הפרשים. הם עדיין יכולים לצפות ולהוריד דוחות.
+          פתיחת חודש חדש פותחת את הדיווח מחדש אוטומטית. חשבת השכר יכולה להמשיך לעבוד גם כשהדיווח נעול.
+        </p>
+        <button className={locked ? "btn btn-primary" : "btn btn-secondary"} onClick={toggleLock}>
+          {locked ? "פתיחת הנעילה" : "נעילת הדיווח"}
+        </button>
       </div>
       <div className="ledger-card">
         <h2 className="card-title">פתיחת חודש לדיווח</h2>
@@ -504,6 +522,12 @@ function ReportsTab({ employees, departments, currentMonth }) {
   const monthEnd = currentMonth
     ? `${currentMonth}-${String(new Date(Number(currentMonth.slice(0, 4)), Number(currentMonth.slice(5, 7)), 0).getDate()).padStart(2, "0")}`
     : "";
+  const [corrScope, setCorrScope] = useState("pending");
+  const [corr, setCorr] = useState(null);
+  useEffect(() => {
+    setCorr(null);
+    api(`/api/reports/corrections?scope=${corrScope}`).then(setCorr).catch(() => setCorr({ rows: [], totalHours: 0 }));
+  }, [corrScope]);
   const [viewEmp, setViewEmp] = useState(null);
   const [empSearch, setEmpSearch] = useState("");
   const empFiltered = employees.filter((e) => {
@@ -552,6 +576,38 @@ function ReportsTab({ employees, departments, currentMonth }) {
             <button className="btn btn-primary btn-sm" onClick={markPaid}>אישור וסימון</button>
             <button className="btn btn-ghost btn-sm" onClick={() => setConfirmPaid(false)}>ביטול</button>
           </div>
+        )}
+      </div>
+
+      <div className="ledger-card">
+        <h2 className="card-title">הפרשים שהוזנו</h2>
+        <p className="hint-text">כל שעות ההפרשים שרכזים הזינו על חודשים קודמים: מי הזין, על איזה עובד ומחלקה, ואם כבר שולמו.</p>
+        <div className="form-row">
+          <label>הצגה
+            <select value={corrScope} onChange={(e) => setCorrScope(e.target.value)}>
+              <option value="pending">ממתינים לתשלום</option>
+              <option value="all">כל ההפרשים (כולל ששולמו)</option>
+            </select>
+          </label>
+          <button className="btn btn-ghost" disabled={busy || !corr || corr.rows.length === 0} onClick={() => download(`/api/reports/corrections-pdf?scope=${corrScope}`, "דוח-הפרשים.pdf")}>הורדת PDF</button>
+          <button className="btn btn-ghost" disabled={busy || !corr || corr.rows.length === 0} onClick={() => download(`/api/reports/corrections-excel?scope=${corrScope}`, "דוח-הפרשים.xlsx")}>הורדת אקסל</button>
+        </div>
+        {corr === null ? <p className="empty-note">טוען…</p> : corr.rows.length === 0 ? <p className="empty-note">אין הפרשים להצגה.</p> : (
+          <>
+            <table className="ledger-table">
+              <thead><tr><th>עובד</th><th>מחלקה</th><th>תאריך עבודה</th><th>כניסה</th><th>יציאה</th><th>שעות</th><th>סטטוס</th><th>הוזן על ידי</th></tr></thead>
+              <tbody>
+                {corr.rows.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.lastName} {r.firstName} <span className="mono">{r.employeeNumber}</span></td>
+                    <td>{r.department}</td><td>{r.date}</td><td>{r.timeIn}</td><td>{r.timeOut}</td>
+                    <td>{fmtHours(r.hours)}</td><td>{r.paid ? "שולם" : "ממתין"}</td><td>{r.reportedBy}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="stat-line">סה״כ: <strong>{fmtHours(corr.totalHours)}</strong> שעות · {corr.rows.length} רישומים</p>
+          </>
         )}
       </div>
 
@@ -644,7 +700,7 @@ function ReportsTab({ employees, departments, currentMonth }) {
                 return (
                   <tr key={e.id}>
                     <td>
-                      <button type="button" className="link-btn" onClick={() => setViewEmp(e)} title="לחצי לצפייה בשעות">
+                      <button type="button" className="name-link" onClick={() => setViewEmp(e)} title="לחצי לצפייה בשעות">
                         {e.lastName} {e.firstName}
                       </button>
                     </td><td className="mono">{e.employeeNumber}</td>
