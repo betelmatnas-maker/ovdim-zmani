@@ -86,6 +86,7 @@ model EmployeeDepartment {
 model Setting {
   id           Int      @id @default(1)
   currentMonth String?
+  reportingLocked Boolean @default(false)
   updatedAt    DateTime @updatedAt
 }
 
