@@ -1,6 +1,7 @@
 const prisma = require("../../../lib/db");
 const { requireAuth } = require("../../../lib/auth");
 const { hoursBetween } = require("../../../lib/hours");
+const { blockIfLocked } = require("../../../lib/lock");
 
 async function handler(req, res) {
   if (req.method === "GET") {
@@ -12,6 +13,7 @@ async function handler(req, res) {
   }
 
   if (req.method === "POST") {
+    if (await blockIfLocked(req, res)) return;
     const { employeeId, departmentId, date, timeIn, timeOut, isCorrection } = req.body || {};
     if (!employeeId || !departmentId || !date || !timeIn || !timeOut) {
       res.status(400).json({ error: "יש למלא מחלקה, תאריך, שעת כניסה ושעת יציאה." });

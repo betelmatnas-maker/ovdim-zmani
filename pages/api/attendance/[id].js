@@ -1,12 +1,15 @@
 const prisma = require("../../../lib/db");
 const { requireAuth } = require("../../../lib/auth");
 const { hoursBetween } = require("../../../lib/hours");
+const { blockIfLocked } = require("../../../lib/lock");
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
 
 async function handler(req, res) {
   const { id } = req.query;
+
+  if ((req.method === "PATCH" || req.method === "DELETE") && (await blockIfLocked(req, res))) return;
 
   if (req.method === "PATCH") {
     const entry = await prisma.attendanceEntry.findUnique({ where: { id } });
