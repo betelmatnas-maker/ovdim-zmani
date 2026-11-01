@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/router";
 import Shell from "../../components/Shell";
 import { api } from "../../lib/apiClient";
-import { monthLabel, fmtHours } from "../../lib/hoursClient";
+import { monthLabel, fmtHours, hoursBetween } from "../../lib/hoursClient";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -504,6 +504,7 @@ function ReportsTab({ employees, departments, currentMonth }) {
   const monthEnd = currentMonth
     ? `${currentMonth}-${String(new Date(Number(currentMonth.slice(0, 4)), Number(currentMonth.slice(5, 7)), 0).getDate()).padStart(2, "0")}`
     : "";
+  const [viewEmp, setViewEmp] = useState(null);
   const [empSearch, setEmpSearch] = useState("");
   const empFiltered = employees.filter((e) => {
     const q = empSearch.trim();
@@ -642,7 +643,11 @@ function ReportsTab({ employees, departments, currentMonth }) {
                 const url = `/api/reports/pdf/employee/${e.id}`;
                 return (
                   <tr key={e.id}>
-                    <td>{e.lastName} {e.firstName}</td><td className="mono">{e.employeeNumber}</td>
+                    <td>
+                      <button type="button" className="link-btn" onClick={() => setViewEmp(e)} title="לחצי לצפייה בשעות">
+                        {e.lastName} {e.firstName}
+                      </button>
+                    </td><td className="mono">{e.employeeNumber}</td>
                     <td className="cell-end">
                       <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => download(url, `דוח-${e.firstName}-${e.lastName}.pdf`)}>
                         {busy === url ? "מוריד…" : "הורדת PDF"}
@@ -654,6 +659,69 @@ function ReportsTab({ employees, departments, currentMonth }) {
             </tbody>
           </table>
         )}
+      </div>
+      {viewEmp && (
+        <EmployeeHoursModal employee={viewEmp} departments={departments} currentMonth={currentMonth} onClose={() => setViewEmp(null)} />
+      )}
+    </div>
+  );
+}
+
+function EmployeeHoursModal({ employee, departments, currentMonth, onClose }) {
+  const [entries, setEntries] = useState(null);
+  const [scope, setScope] = useState("month");
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    api(`/api/attendance?employeeId=${employee.id}`).then(setEntries).catch((e) => setErr(e.message));
+  }, [employee.id]);
+
+  const depName = (id) => (departments.find((d) => d.id === id) || {}).name || "מחלקה לא ידועה";
+  const shown = (entries || [])
+    .filter((en) => scope === "all" || (en.date.slice(0, 7) === currentMonth && !en.isCorrection) || (en.isCorrection && !en.paid))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.timeIn.localeCompare(b.timeIn));
+  const regular = shown.filter((en) => !en.isCorrection);
+  const corr = shown.filter((en) => en.isCorrection);
+  const sum = (list) => list.reduce((s, en) => s + hoursBetween(en.timeIn, en.timeOut), 0);
+  const days = new Set(regular.map((en) => en.date)).size;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ maxWidth: 760 }} onClick={(e) => e.stopPropagation()}>
+        <h2 className="card-title">{employee.lastName} {employee.firstName} · {employee.employeeNumber}</h2>
+        <div className="form-row">
+          <label>הצגה
+            <select value={scope} onChange={(e) => setScope(e.target.value)}>
+              <option value="month">החודש הנוכחי ({currentMonth ? monthLabel(currentMonth) : "—"}) + הפרשים ממתינים</option>
+              <option value="all">כל הדיווחים</option>
+            </select>
+          </label>
+        </div>
+        {err && <div className="form-err">{err}</div>}
+        {entries === null && !err && <p className="empty-note">טוען…</p>}
+        {entries !== null && (
+          <>
+            <table className="ledger-table">
+              <thead><tr><th>תאריך</th><th>מחלקה</th><th>כניסה</th><th>יציאה</th><th>שעות</th><th>סוג</th></tr></thead>
+              <tbody>
+                {shown.map((en) => (
+                  <tr key={en.id}>
+                    <td>{en.date}</td><td>{depName(en.departmentId)}</td><td>{en.timeIn}</td><td>{en.timeOut}</td>
+                    <td>{fmtHours(hoursBetween(en.timeIn, en.timeOut))}</td>
+                    <td>{en.isCorrection ? (en.paid ? "הפרש (שולם)" : "הפרש") : "שוטף"}</td>
+                  </tr>
+                ))}
+                {shown.length === 0 && <tr><td colSpan={6}>אין דיווחים.</td></tr>}
+              </tbody>
+            </table>
+            <p className="stat-line">
+              סה״כ שעות: <strong>{fmtHours(sum(regular))}</strong> · {days} ימי עבודה · הפרשים: <strong>{fmtHours(sum(corr))}</strong>
+            </p>
+          </>
+        )}
+        <div className="form-row">
+          <button className="btn btn-ghost" onClick={onClose}>סגירה</button>
+        </div>
       </div>
     </div>
   );
