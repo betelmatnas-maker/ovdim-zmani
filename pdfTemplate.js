@@ -1,0 +1,151 @@
+const { hoursBetween, fmtHours, monthLabel, fullName } = require("./hours");
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+// Renders one employee's report as an HTML "page" fragment.
+function employeeSectionHtml(emp, entries, departmentsById, currentMonth) {
+  const depName = (id) => (departmentsById[id] ? departmentsById[id].name : "מחלקה לא ידועה");
+  const monthlyEntries = entries.filter(
+    (en) => !en.isCorrection && currentMonth && en.date.slice(0, 7) === currentMonth
+  );
+  const totalMonthly = monthlyEntries.reduce((s, en) => s + hoursBetween(en.timeIn, en.timeOut), 0);
+  const totalDays = new Set(monthlyEntries.map((en) => en.date)).size;
+  const totalCorrections = entries
+    .filter((en) => en.isCorrection && !en.paid)
+    .reduce((s, en) => s + hoursBetween(en.timeIn, en.timeOut), 0);
+
+  const rowsHtml = entries
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(
+      (en) => `
+      <tr>
+        <td>${escapeHtml(en.date)}</td>
+        <td>${escapeHtml(depName(en.departmentId))}</td>
+        <td>${escapeHtml(en.timeIn)}</td>
+        <td>${escapeHtml(en.timeOut)}</td>
+        <td>${fmtHours(hoursBetween(en.timeIn, en.timeOut))}</td>
+        <td>${en.isCorrection ? (en.paid ? "הפרש (שולם)" : "הפרש") : "שוטף"}</td>
+      </tr>`
+    )
+    .join("");
+
+  return `
+  <section class="sheet">
+    <h2>דוח נוכחות — ${escapeHtml(fullName(emp))}</h2>
+    <p class="meta">מספר עובד: ${escapeHtml(emp.employeeNumber)} · חודש: ${currentMonth ? monthLabel(currentMonth) : "—"}</p>
+    <table>
+      <thead><tr><th>תאריך</th><th>מחלקה</th><th>כניסה</th><th>יציאה</th><th>שעות</th><th>סוג</th></tr></thead>
+      <tbody>${rowsHtml || `<tr><td colspan="6">אין רישומים.</td></tr>`}</tbody>
+    </table>
+    <p class="total">
+      סה״כ חודש נוכחי: ${fmtHours(totalMonthly)} שעות · ${totalDays} ימי עבודה ·
+      סה״כ הפרשים ממתינים לתשלום: ${fmtHours(totalCorrections)} שעות
+    </p>
+    <div class="signature-area">
+      <div class="signature-line">
+        <span class="signature-label">חתימת העובד</span>
+      </div>
+      <div class="signature-line">
+        <span class="signature-label">תאריך</span>
+      </div>
+    </div>
+  </section>`;
+}
+
+// One employee's report for an arbitrary list of entries (already filtered by the caller),
+// with a per-department summary (name, number, rate, hours) - used for period reports
+// and for the coordinator's monthly report.
+function periodSectionHtml(emp, entries, departmentsById, periodLabel, correctionsLabel) {
+  const dep = (id) => departmentsById[id] || null;
+  const depName = (id) => (dep(id) ? dep(id).name : "מחלקה לא ידועה");
+  const regular = entries.filter((en) => !en.isCorrection);
+  const corrections = entries.filter((en) => en.isCorrection);
+  const sum = (list) => list.reduce((s, en) => s + hoursBetween(en.timeIn, en.timeOut), 0);
+  const days = new Set(regular.map((en) => en.date)).size;
+
+  const byDep = {};
+  entries.forEach((en) => {
+    if (!byDep[en.departmentId]) byDep[en.departmentId] = { reg: 0, cor: 0 };
+    const h = hoursBetween(en.timeIn, en.timeOut);
+    if (en.isCorrection) byDep[en.departmentId].cor += h; else byDep[en.departmentId].reg += h;
+  });
+  const depRows = Object.entries(byDep)
+    .sort((a, b) => depName(a[0]).localeCompare(depName(b[0]), "he"))
+    .map(([id, v]) => `
+      <tr>
+        <td>${escapeHtml(depName(id))}</td>
+        <td>${escapeHtml(dep(id) ? dep(id).departmentNumber : "")}</td>
+        <td>${escapeHtml(dep(id) ? dep(id).rate : "")}</td>
+        <td>${fmtHours(v.reg)}</td>
+        <td>${fmtHours(v.cor)}</td>
+      </tr>`).join("");
+
+  const rowsHtml = entries
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date) || a.timeIn.localeCompare(b.timeIn))
+    .map((en) => `
+      <tr>
+        <td>${escapeHtml(en.date)}</td>
+        <td>${escapeHtml(depName(en.departmentId))}</td>
+        <td>${escapeHtml(en.timeIn)}</td>
+        <td>${escapeHtml(en.timeOut)}</td>
+        <td>${fmtHours(hoursBetween(en.timeIn, en.timeOut))}</td>
+        <td>${en.isCorrection ? "הפרש" : "שוטף"}</td>
+      </tr>`).join("");
+
+  return `
+  <section class="sheet">
+    <h2>דוח נוכחות — ${escapeHtml(fullName(emp))}</h2>
+    <p class="meta">מספר עובד: ${escapeHtml(emp.employeeNumber)} · ${escapeHtml(periodLabel)}</p>
+    <table>
+      <thead><tr><th>תאריך</th><th>מחלקה</th><th>כניסה</th><th>יציאה</th><th>שעות</th><th>סוג</th></tr></thead>
+      <tbody>${rowsHtml || `<tr><td colspan="6">אין רישומים בתקופה זו.</td></tr>`}</tbody>
+    </table>
+    <table>
+      <thead><tr><th>שם המחלקה</th><th>מספר מחלקה</th><th>תעריף לשעה</th><th>שעות</th><th>שעות הפרשים</th></tr></thead>
+      <tbody>${depRows || `<tr><td colspan="5">—</td></tr>`}</tbody>
+    </table>
+    <p class="total">
+      סה״כ שעות: ${fmtHours(sum(regular))} · ${days} ימי עבודה ·
+      ${escapeHtml(correctionsLabel || "סה״כ הפרשים")}: ${fmtHours(sum(corrections))} שעות
+    </p>
+    <div class="signature-area">
+      <div class="signature-line"><span class="signature-label">חתימת העובד</span></div>
+      <div class="signature-line"><span class="signature-label">תאריך</span></div>
+    </div>
+  </section>`;
+}
+
+function reportDocumentHtml(sections) {
+  return `<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8" />
+<style>
+  @page { size: A4; margin: 28px; }
+  body { font-family: 'Arial', 'Segoe UI', sans-serif; color: #22262B; }
+  .sheet { page-break-after: always; }
+  .sheet:last-child { page-break-after: auto; }
+  h2 { margin: 0 0 4px; font-size: 20px; }
+  .meta { color: #5B6169; font-size: 13px; margin: 0 0 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 12px; }
+  th { text-align: right; font-weight: 600; color: #5B6169; font-size: 11px; padding: 6px 8px; border-bottom: 1px solid #DDD6C8; }
+  td { padding: 7px 8px; border-bottom: 1px solid #EEE9DD; }
+  .total { font-weight: 600; }
+  .signature-area { display: flex; gap: 60px; margin-top: 60px; }
+  .signature-line { flex: 1; border-top: 1px solid #22262B; padding-top: 6px; text-align: center; }
+  .signature-label { font-size: 12px; color: #5B6169; }
+</style>
+</head>
+<body>
+${sections.join("\n")}
+</body>
+</html>`;
+}
+
+module.exports = { employeeSectionHtml, periodSectionHtml, reportDocumentHtml };
