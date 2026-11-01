@@ -251,6 +251,21 @@ function ReportSheet({ empId, depId, currentMonth, onOpenCorrection, onSubmitted
     } catch (e) { setErr(e.message); }
   };
 
+  const [editId, setEditId] = useState(null);
+  const [editDate, setEditDate] = useState("");
+  const [editIn, setEditIn] = useState("");
+  const [editOut, setEditOut] = useState("");
+  const [editErr, setEditErr] = useState("");
+  const startEdit = (en) => { setEditId(en.id); setEditDate(en.date); setEditIn(en.timeIn); setEditOut(en.timeOut); setEditErr(""); };
+  const saveEdit = async () => {
+    setEditErr("");
+    try {
+      await api(`/api/attendance/${editId}`, { method: "PATCH", body: { date: editDate, timeIn: editIn, timeOut: editOut } });
+      setEditId(null);
+      await reload();
+    } catch (e) { setEditErr(e.message); }
+  };
+
   const removeRow = async (id) => {
     await api(`/api/attendance/${id}`, { method: "DELETE" });
     await reload();
@@ -277,14 +292,33 @@ function ReportSheet({ empId, depId, currentMonth, onOpenCorrection, onSubmitted
         <thead><tr><th>תאריך</th><th>כניסה</th><th>יציאה</th><th>שעות</th>{!submitted && <th></th>}</tr></thead>
         <tbody>
           {entries.map((en) => (
+            editId === en.id ? (
+              <tr key={en.id}>
+                <td><input type="date" min={bounds.min} max={bounds.max} value={editDate} onChange={(e) => setEditDate(e.target.value)} /></td>
+                <td><input type="time" value={editIn} onChange={(e) => setEditIn(e.target.value)} /></td>
+                <td><input type="time" value={editOut} onChange={(e) => setEditOut(e.target.value)} /></td>
+                <td>{editIn && editOut ? fmtHours(Math.max(0, hoursBetween(editIn, editOut))) : ""}</td>
+                <td className="cell-end">
+                  <button className="btn btn-primary btn-sm" onClick={saveEdit}>שמירה</button>{" "}
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditId(null)}>ביטול</button>
+                </td>
+              </tr>
+            ) : (
             <tr key={en.id}>
               <td>{en.date}</td><td>{en.timeIn}</td><td>{en.timeOut}</td><td>{fmtHours(hoursBetween(en.timeIn, en.timeOut))}</td>
-              {!submitted && <td className="cell-end"><button className="btn btn-ghost btn-sm" onClick={() => removeRow(en.id)}>הסרה</button></td>}
+              {!submitted && (
+                <td className="cell-end">
+                  <button className="btn btn-ghost btn-sm" onClick={() => startEdit(en)}>עריכה</button>{" "}
+                  <button className="btn btn-ghost btn-sm" onClick={() => removeRow(en.id)}>הסרה</button>
+                </td>
+              )}
             </tr>
+            )
           ))}
           {entries.length === 0 && <tr><td colSpan={5}>עדיין לא דווחו שעות החודש.</td></tr>}
         </tbody>
       </table>
+      {editErr && <div className="form-err">{editErr}</div>}
       <p className="stat-line">סה״כ שעות שדווחו: <strong>{fmtHours(total)}</strong></p>
 
       {!submitted && (
