@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/router";
 import Shell from "../../components/Shell";
 import { api } from "../../lib/apiClient";
-import { monthLabel, fmtHours, hoursBetween } from "../../lib/hoursClient";
+import { monthLabel, fmtHours } from "../../lib/hoursClient";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -518,39 +518,12 @@ function ReportsTab({ employees, departments, currentMonth }) {
     }
   };
 
-  const monthStart = currentMonth ? `${currentMonth}-01` : "";
-  const monthEnd = currentMonth
-    ? `${currentMonth}-${String(new Date(Number(currentMonth.slice(0, 4)), Number(currentMonth.slice(5, 7)), 0).getDate()).padStart(2, "0")}`
-    : "";
   const [corrScope, setCorrScope] = useState("pending");
   const [corr, setCorr] = useState(null);
   useEffect(() => {
     setCorr(null);
     api(`/api/reports/corrections?scope=${corrScope}`).then(setCorr).catch(() => setCorr({ rows: [], totalHours: 0 }));
   }, [corrScope]);
-  const [viewEmp, setViewEmp] = useState(null);
-  const [empSearch, setEmpSearch] = useState("");
-  const empFiltered = employees.filter((e) => {
-    const q = empSearch.trim();
-    return !q || (e.lastName + " " + e.firstName).includes(q) || (e.firstName + " " + e.lastName).includes(q) || e.employeeNumber.includes(q);
-  });
-  const [periodEmp, setPeriodEmp] = useState("");
-  const [periodQuery, setPeriodQuery] = useState("");
-  const periodMatches = employees.filter((e) => {
-    const q = periodQuery.trim();
-    return !q || (e.lastName + " " + e.firstName).includes(q) || (e.firstName + " " + e.lastName).includes(q) || e.employeeNumber.includes(q);
-  }).slice(0, 50);
-  const periodSelectedLabel = periodEmp === "all" ? "כל העובדים (דף לכל עובד)"
-    : (() => { const e = employees.find((x) => x.id === periodEmp); return e ? `${e.lastName} ${e.firstName} · ${e.employeeNumber}` : ""; })();
-  const [periodFrom, setPeriodFrom] = useState(monthStart);
-  const [periodTo, setPeriodTo] = useState(monthEnd);
-  useEffect(() => { setPeriodFrom((v) => v || monthStart); setPeriodTo((v) => v || monthEnd); }, [monthStart, monthEnd]);
-  const periodUrl = `/api/reports/pdf/period?employeeId=${encodeURIComponent(periodEmp)}&from=${periodFrom}&to=${periodTo}`;
-  const periodReady = periodEmp && periodFrom && periodTo && periodFrom <= periodTo;
-
-  const sortedDepartments = [...departments].sort((a, b) => a.name.localeCompare(b.name, "he"));
-  const deptCount = (depId) => new Set(rows.filter((r) => r.monthly > 0 && r.departmentId === depId).map((r) => r.employeeId)).size;
-
   return (
     <div className="panel">
       <div className="ledger-card">
@@ -611,173 +584,106 @@ function ReportsTab({ employees, departments, currentMonth }) {
         )}
       </div>
 
-      <div className="ledger-card">
-        <h2 className="card-title">דוח לפי תקופה</h2>
-        <p className="hint-text">בחרי עובד (או כל העובדים) ותקופה, ואפשר להוריד PDF עם כל הדיווחים שלו בתקופה, מסוכם לפי מחלקה.</p>
-        <div className="form-row">
-          <label style={{ flex: "1 1 280px" }}>עובד
-            <input
-              className="search-input"
-              placeholder="חיפוש לפי שם משפחה, שם פרטי או מספר עובד"
-              value={periodEmp ? periodSelectedLabel : periodQuery}
-              onChange={(e) => { setPeriodQuery(e.target.value); setPeriodEmp(""); }}
-              onFocus={() => { if (periodEmp) { setPeriodEmp(""); setPeriodQuery(""); } }}
-            />
-            {!periodEmp && (
-              <div className="combo-list">
-                {!periodQuery.trim() && (
-                  <button type="button" className="combo-item" onClick={() => { setPeriodEmp("all"); setPeriodQuery(""); }}>
-                    <span>כל העובדים (דף לכל עובד)</span><span></span>
-                  </button>
-                )}
-                {periodMatches.length === 0 && <div className="combo-empty">לא נמצאו עובדים.</div>}
-                {periodMatches.map((e) => (
-                  <button type="button" key={e.id} className="combo-item" onClick={() => { setPeriodEmp(e.id); setPeriodQuery(""); }}>
-                    <span>{e.lastName} {e.firstName}</span><span className="mono">{e.employeeNumber}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </label>
-          <label>מתאריך<input type="date" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} /></label>
-          <label>עד תאריך<input type="date" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} /></label>
-          <button className="btn btn-primary" disabled={!periodReady || busy} onClick={() => download(periodUrl, "דוח-תקופה.pdf")}>
-            {busy === periodUrl ? "מכין..." : "הורדת PDF"}
-          </button>
-        </div>
-      </div>
-
-      <div className="ledger-card">
-        <h2 className="card-title">דוחות לפי מחלקה (PDF ואקסל)</h2>
-        <p className="hint-text">לכל מחלקה אפשר להוריד PDF (דף נפרד לכל עובד לפי סדר א׳-ב׳) או קובץ אקסל של המחלקה לחודש הנוכחי.</p>
-        {departments.length === 0 ? <p className="empty-note">עדיין לא הוזנו מחלקות.</p> : (
-          <table className="ledger-table">
-            <thead><tr><th>מחלקה</th><th>עובדים בדוח</th><th></th></tr></thead>
-            <tbody>
-              {sortedDepartments.map((d) => {
-                const count = deptCount(d.id);
-                const url = `/api/reports/pdf/department/${d.id}`;
-                return (
-                  <tr key={d.id}>
-                    <td>{d.name}</td><td className="mono">{count}</td>
-                    <td className="cell-end">
-                      <button className="btn btn-ghost btn-sm" disabled={count === 0 || busy} onClick={() => download(url, `דוח-${d.name}.pdf`)}>
-                        {busy === url ? "מוריד…" : "הורדת PDF"}
-                      </button>{" "}
-                      <button className="btn btn-ghost btn-sm" disabled={count === 0 || busy} onClick={() => download(`/api/reports/excel?departmentId=${d.id}`, `דוח-${d.name}.xlsx`)}>
-                        {busy === `/api/reports/excel?departmentId=${d.id}` ? "מוריד…" : "הורדת אקסל"}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className="ledger-card">
-        <h2 className="card-title">דוחות עובד בודד (PDF)</h2>
-        {employees.length > 0 && (
-          <div className="form-row">
-            <label style={{ flex: "1 1 280px" }}>חיפוש
-              <input
-                className="search-input"
-                placeholder="חיפוש לפי שם משפחה, שם פרטי או מספר עובד"
-                value={empSearch}
-                onChange={(e) => setEmpSearch(e.target.value)}
-              />
-            </label>
-          </div>
-        )}
-        {employees.length === 0 ? <p className="empty-note">אין עובדים במערכת.</p>
-        : empFiltered.length === 0 ? <p className="empty-note">לא נמצאו עובדים.</p> : (
-          <table className="ledger-table">
-            <thead><tr><th>שם</th><th>מספר עובד</th><th></th></tr></thead>
-            <tbody>
-              {empFiltered.map((e) => {
-                const url = `/api/reports/pdf/employee/${e.id}`;
-                return (
-                  <tr key={e.id}>
-                    <td>
-                      <button type="button" className="name-link" onClick={() => setViewEmp(e)} title="לחצי לצפייה בשעות">
-                        {e.lastName} {e.firstName}
-                      </button>
-                    </td><td className="mono">{e.employeeNumber}</td>
-                    <td className="cell-end">
-                      <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => download(url, `דוח-${e.firstName}-${e.lastName}.pdf`)}>
-                        {busy === url ? "מוריד…" : "הורדת PDF"}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-      {viewEmp && (
-        <EmployeeHoursModal employee={viewEmp} departments={departments} currentMonth={currentMonth} onClose={() => setViewEmp(null)} />
-      )}
+      <EmployeeReportCard employees={employees} currentMonth={currentMonth} download={download} busy={busy} />
+      <DepartmentReportCard departments={departments} currentMonth={currentMonth} download={download} busy={busy} />
     </div>
   );
 }
 
-function EmployeeHoursModal({ employee, departments, currentMonth, onClose }) {
-  const [entries, setEntries] = useState(null);
-  const [scope, setScope] = useState("month");
-  const [err, setErr] = useState("");
+function monthRange(currentMonth) {
+  if (!currentMonth) return { from: "", to: "" };
+  const [y, m] = currentMonth.split("-").map(Number);
+  const last = new Date(y, m, 0).getDate();
+  return { from: `${currentMonth}-01`, to: `${currentMonth}-${String(last).padStart(2, "0")}` };
+}
 
-  useEffect(() => {
-    api(`/api/attendance?employeeId=${employee.id}`).then(setEntries).catch((e) => setErr(e.message));
-  }, [employee.id]);
+function EmployeeReportCard({ employees, currentMonth, download, busy }) {
+  const range = monthRange(currentMonth);
+  const [empId, setEmpId] = useState("");
+  const [query, setQuery] = useState("");
+  const [from, setFrom] = useState(range.from);
+  const [to, setTo] = useState(range.to);
+  useEffect(() => { setFrom((v) => v || range.from); setTo((v) => v || range.to); }, [range.from, range.to]);
 
-  const depName = (id) => (departments.find((d) => d.id === id) || {}).name || "מחלקה לא ידועה";
-  const shown = (entries || [])
-    .filter((en) => scope === "all" || (en.date.slice(0, 7) === currentMonth && !en.isCorrection) || (en.isCorrection && !en.paid))
-    .sort((a, b) => a.date.localeCompare(b.date) || a.timeIn.localeCompare(b.timeIn));
-  const regular = shown.filter((en) => !en.isCorrection);
-  const corr = shown.filter((en) => en.isCorrection);
-  const sum = (list) => list.reduce((s, en) => s + hoursBetween(en.timeIn, en.timeOut), 0);
-  const days = new Set(regular.map((en) => en.date)).size;
+  const matches = employees.filter((e) => {
+    const q = query.trim();
+    return !q || (e.lastName + " " + e.firstName).includes(q) || (e.firstName + " " + e.lastName).includes(q) || e.employeeNumber.includes(q);
+  }).slice(0, 50);
+  const chosen = employees.find((e) => e.id === empId);
+  const ready = empId && from && to && from <= to;
+  const url = (format) => `/api/reports/by-employee?employeeId=${encodeURIComponent(empId)}&from=${from}&to=${to}&format=${format}`;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box" style={{ maxWidth: 760 }} onClick={(e) => e.stopPropagation()}>
-        <h2 className="card-title">{employee.lastName} {employee.firstName} · {employee.employeeNumber}</h2>
-        <div className="form-row">
-          <label>הצגה
-            <select value={scope} onChange={(e) => setScope(e.target.value)}>
-              <option value="month">החודש הנוכחי ({currentMonth ? monthLabel(currentMonth) : "—"}) + הפרשים ממתינים</option>
-              <option value="all">כל הדיווחים</option>
-            </select>
-          </label>
-        </div>
-        {err && <div className="form-err">{err}</div>}
-        {entries === null && !err && <p className="empty-note">טוען…</p>}
-        {entries !== null && (
-          <>
-            <table className="ledger-table">
-              <thead><tr><th>תאריך</th><th>מחלקה</th><th>כניסה</th><th>יציאה</th><th>שעות</th><th>סוג</th></tr></thead>
-              <tbody>
-                {shown.map((en) => (
-                  <tr key={en.id}>
-                    <td>{en.date}</td><td>{depName(en.departmentId)}</td><td>{en.timeIn}</td><td>{en.timeOut}</td>
-                    <td>{fmtHours(hoursBetween(en.timeIn, en.timeOut))}</td>
-                    <td>{en.isCorrection ? (en.paid ? "הפרש (שולם)" : "הפרש") : "שוטף"}</td>
-                  </tr>
-                ))}
-                {shown.length === 0 && <tr><td colSpan={6}>אין דיווחים.</td></tr>}
-              </tbody>
-            </table>
-            <p className="stat-line">
-              סה״כ שעות: <strong>{fmtHours(sum(regular))}</strong> · {days} ימי עבודה · הפרשים: <strong>{fmtHours(sum(corr))}</strong>
-            </p>
-          </>
-        )}
-        <div className="form-row">
-          <button className="btn btn-ghost" onClick={onClose}>סגירה</button>
-        </div>
+    <div className="ledger-card">
+      <h2 className="card-title">דוחות לפי עובד</h2>
+      <p className="hint-text">בחרי עובד ותקופה. הדוח מציג את כל הדיווחים לפי סדר כרונולוגי (תאריך, מחלקה, שעת כניסה, שעת יציאה), ובסוף סה״כ ימים וסה״כ שעות.</p>
+      <div className="form-row">
+        <label style={{ flex: "1 1 280px" }}>עובד
+          <input
+            className="search-input"
+            placeholder="חיפוש לפי שם משפחה, שם פרטי או מספר עובד"
+            value={chosen ? `${chosen.lastName} ${chosen.firstName} · ${chosen.employeeNumber}` : query}
+            onChange={(e) => { setQuery(e.target.value); setEmpId(""); }}
+            onFocus={() => { if (empId) { setEmpId(""); setQuery(""); } }}
+          />
+          {!empId && (
+            <div className="combo-list">
+              {matches.length === 0 && <div className="combo-empty">לא נמצאו עובדים.</div>}
+              {matches.map((e) => (
+                <button type="button" key={e.id} className="combo-item" onClick={() => { setEmpId(e.id); setQuery(""); }}>
+                  <span>{e.lastName} {e.firstName}</span><span className="mono">{e.employeeNumber}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </label>
+        <label>מתאריך<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+        <label>עד תאריך<input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+      </div>
+      <div className="form-row">
+        <button className="btn btn-primary" disabled={!ready || busy} onClick={() => download(url("pdf"), "דוח-עובד.pdf")}>
+          {busy === url("pdf") ? "מכין…" : "הורדת PDF"}
+        </button>
+        <button className="btn btn-secondary" disabled={!ready || busy} onClick={() => download(url("xlsx"), "דוח-עובד.xlsx")}>
+          {busy === url("xlsx") ? "מכין…" : "הורדת אקסל"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DepartmentReportCard({ departments, currentMonth, download, busy }) {
+  const range = monthRange(currentMonth);
+  const [depId, setDepId] = useState("");
+  const [from, setFrom] = useState(range.from);
+  const [to, setTo] = useState(range.to);
+  useEffect(() => { setFrom((v) => v || range.from); setTo((v) => v || range.to); }, [range.from, range.to]);
+
+  const sorted = [...departments].sort((a, b) => a.name.localeCompare(b.name, "he"));
+  const ready = depId && from && to && from <= to;
+  const url = (format) => `/api/reports/by-department?departmentId=${encodeURIComponent(depId)}&from=${from}&to=${to}&format=${format}`;
+
+  return (
+    <div className="ledger-card">
+      <h2 className="card-title">דוחות לפי מחלקה</h2>
+      <p className="hint-text">בחרי מחלקה ותקופה. הדוח מציג את דיווחי כל העובדים שעבדו במחלקה לפי סדר כרונולוגי (תאריך, שם עובד, כניסה, יציאה).</p>
+      <div className="form-row">
+        <label>מחלקה
+          <select value={depId} onChange={(e) => setDepId(e.target.value)}>
+            <option value="">בחרי מחלקה</option>
+            {sorted.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+        </label>
+        <label>מתאריך<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+        <label>עד תאריך<input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+      </div>
+      <div className="form-row">
+        <button className="btn btn-primary" disabled={!ready || busy} onClick={() => download(url("pdf"), "דוח-מחלקה.pdf")}>
+          {busy === url("pdf") ? "מכין…" : "הורדת PDF"}
+        </button>
+        <button className="btn btn-secondary" disabled={!ready || busy} onClick={() => download(url("xlsx"), "דוח-מחלקה.xlsx")}>
+          {busy === url("xlsx") ? "מכין…" : "הורדת אקסל"}
+        </button>
       </div>
     </div>
   );
